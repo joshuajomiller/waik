@@ -43,10 +43,45 @@ cp Resources/Info.plist               "$APP_BUNDLE/Contents/Info.plist"
 cp Resources/com.waik.helper.plist    "$APP_BUNDLE/Contents/Library/LaunchDaemons/com.waik.helper.plist"
 cp Resources/AppIcon.icns             "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
+# Embed Sparkle.framework. SwiftPM builds the framework next to the
+# executable; the .app expects it under Contents/Frameworks. ditto
+# preserves symlinks (the framework heavily relies on Versions/Current).
+SPARKLE_FRAMEWORK="$BIN_DIR/Sparkle.framework"
+if [ -d "$SPARKLE_FRAMEWORK" ]; then
+    mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+    ditto "$SPARKLE_FRAMEWORK" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+fi
+
 # PkgInfo (optional but harmless)
 printf 'APPL????' > "$APP_BUNDLE/Contents/PkgInfo"
 
 echo "==> Signing with: $SIGN_ID"
+
+# Sign Sparkle.framework first — every embedded binary inside it must be
+# signed with the same identity as the host app, otherwise Gatekeeper
+# rejects the whole bundle. Sign inside-out: helper services, the main
+# framework binary, then the framework itself.
+SPARKLE_BUNDLE_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPARKLE_BUNDLE_FRAMEWORK" ]; then
+    find "$SPARKLE_BUNDLE_FRAMEWORK/Versions/Current/XPCServices" \
+        -name '*.xpc' -maxdepth 1 -type d 2>/dev/null | while read -r xpc; do
+        codesign --force --options runtime --timestamp=none \
+            --sign "$SIGN_ID" "$xpc"
+    done
+    if [ -d "$SPARKLE_BUNDLE_FRAMEWORK/Versions/Current/Updater.app" ]; then
+        codesign --force --options runtime --timestamp=none \
+            --sign "$SIGN_ID" \
+            "$SPARKLE_BUNDLE_FRAMEWORK/Versions/Current/Updater.app"
+    fi
+    if [ -x "$SPARKLE_BUNDLE_FRAMEWORK/Versions/Current/Autoupdate" ]; then
+        codesign --force --options runtime --timestamp=none \
+            --sign "$SIGN_ID" \
+            "$SPARKLE_BUNDLE_FRAMEWORK/Versions/Current/Autoupdate"
+    fi
+    codesign --force --options runtime --timestamp=none \
+        --sign "$SIGN_ID" "$SPARKLE_BUNDLE_FRAMEWORK"
+fi
+
 codesign --force --options runtime --timestamp=none \
     --sign "$SIGN_ID" \
     --entitlements Resources/waik.helper.entitlements \

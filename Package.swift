@@ -8,6 +8,9 @@ let package = Package(
         .executable(name: "waik", targets: ["WaikApp"]),
         .executable(name: "waik-helper", targets: ["WaikHelper"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+    ],
     targets: [
         .target(
             name: "WaikShared",
@@ -24,7 +27,12 @@ let package = Package(
         ),
         .executableTarget(
             name: "WaikApp",
-            dependencies: ["WaikShared", "WaikCore", "CProcInfo"],
+            dependencies: [
+                "WaikShared",
+                "WaikCore",
+                "CProcInfo",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Sources/WaikApp",
             linkerSettings: [
                 .linkedFramework("IOKit"),

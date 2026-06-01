@@ -132,3 +132,40 @@ jobs:
             ${{ steps.package.outputs.artifact }}.sha256
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+      - name: Determine Sparkle publish mode
+        id: sparkle
+        env:
+          KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          if [ -n "${KEY:-}" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Sparkle key not set — skipping appcast publish."
+          fi
+
+      - name: Fetch Sparkle signing tools
+        if: steps.sparkle.outputs.publish == 'true'
+        id: sparkle_tools
+        run: |
+          SPARKLE_VERSION=2.6.4
+          ARCHIVE="$RUNNER_TEMP/sparkle.tar.xz"
+          curl -sL --fail \
+            -o "$ARCHIVE" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          tar -xJf "$ARCHIVE" -C "$RUNNER_TEMP/sparkle"
+          SIGN_UPDATE="$RUNNER_TEMP/sparkle/bin/sign_update"
+          test -x "$SIGN_UPDATE" || { echo "sign_update not found"; exit 1; }
+          echo "sign_update=$SIGN_UPDATE" >> "$GITHUB_OUTPUT"
+
+      - name: Publish appcast to gh-pages
+        if: steps.sparkle.outputs.publish == 'true'
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Scripts/publish-appcast.sh \
+            "${{ steps.package.outputs.artifact }}" \
+            "${{ steps.sparkle_tools.outputs.sign_update }}"

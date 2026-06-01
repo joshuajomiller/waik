@@ -1,7 +1,10 @@
 import SwiftUI
+import Sparkle
 
 struct MenuBarView: View {
     @EnvironmentObject var coordinator: AppCoordinator
+    let updater: SPUUpdater
+
     @State private var processesExpanded = false
     @State private var newProcessName: String = ""
     @State private var lastAddRejected: Bool = false
@@ -31,6 +34,12 @@ struct MenuBarView: View {
             processesSection
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
+
+            separator
+
+            CheckForUpdatesRow(updater: updater)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
 
             separator
 
@@ -448,5 +457,42 @@ private struct HoverRowStyle: ButtonStyle {
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+}
+
+// MARK: - Updates
+
+private final class CheckForUpdatesViewModel: ObservableObject {
+    @Published var canCheckForUpdates = false
+
+    init(updater: SPUUpdater) {
+        updater.publisher(for: \.canCheckForUpdates)
+            .assign(to: &$canCheckForUpdates)
+    }
+}
+
+private struct CheckForUpdatesRow: View {
+    @ObservedObject private var viewModel: CheckForUpdatesViewModel
+    private let updater: SPUUpdater
+
+    init(updater: SPUUpdater) {
+        self.updater = updater
+        self.viewModel = CheckForUpdatesViewModel(updater: updater)
+    }
+
+    var body: some View {
+        HoverButton {
+            updater.checkForUpdates()
+        } content: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+                Text("Check for updates…")
+                Spacer()
+            }
+            .opacity(viewModel.canCheckForUpdates ? 1.0 : 0.5)
+        }
+        .disabled(!viewModel.canCheckForUpdates)
     }
 }

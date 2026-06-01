@@ -170,6 +170,23 @@ To switch on Developer ID signing + notarization, add these repo secrets at **Se
 
 Once all five are present, the next tagged release auto-notarizes and staples without any code changes.
 
+### Enabling Sparkle auto-updates
+
+`waik` ships with Sparkle 2 integration ready to go — the menu has a "Check for updates…" item and the app respects `SUEnableAutomaticChecks`. To actually serve updates you need to generate an EdDSA signing key pair and host the appcast:
+
+1. Download Sparkle's tarball: <https://github.com/sparkle-project/Sparkle/releases>
+2. Generate a keypair: `./bin/generate_keys`. The public key prints to stdout; the private key is stored in your Keychain by default. Export the private key with `./bin/generate_keys -x sparkle.key`.
+3. Paste the **public** key into `Resources/Info.plist`:
+   ```xml
+   <key>SUPublicEDKey</key>
+   <string>YOUR_PUBLIC_KEY_HERE</string>
+   ```
+4. Add the **private** key as a GitHub repo secret named `SPARKLE_ED_PRIVATE_KEY` (paste the file contents).
+5. Enable GitHub Pages on the `gh-pages` branch (repo Settings → Pages → Source: Deploy from a branch → `gh-pages`).
+6. Cut a new release. The workflow signs the .zip, appends an entry to `gh-pages/appcast.xml`, and pushes. Existing users running `waik` will see the update on the next periodic check.
+
+Until you complete those steps, the in-app "Check for updates…" item gracefully reports "Unable to check" — fail-closed by design.
+
 The output is a self-contained `build/waik.app` bundle with the helper daemon inside `Contents/Library/LaunchDaemons`. SMAppService handles registration at first launch.
 
 ### Project layout

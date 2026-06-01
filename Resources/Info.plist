@@ -30,5 +30,20 @@
     <false/>
     <key>NSSupportsSuddenTermination</key>
     <false/>
+    <!--
+        Sparkle 2 auto-update configuration.
+
+        SUFeedURL points at the appcast.xml published by the release workflow
+        to the gh-pages branch.
+
+        SUPublicEDKey verifies update signatures. Until you generate keys
+        (`./bin/generate_keys` from Sparkle's tarball), the entry below is
+        absent and Sparkle will refuse to install updates — failing closed
+        is the correct default for an unsigned feed.
+    -->
+    <key>SUFeedURL</key>
+    <string>https://joshuajomiller.github.io/waik/appcast.xml</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
 </dict>
 </plist>
