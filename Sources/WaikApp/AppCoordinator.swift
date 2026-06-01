@@ -59,6 +59,7 @@ final class AppCoordinator: ObservableObject {
     private let assertion = PowerAssertion()
     private var cancellables = Set<AnyCancellable>()
     private var reconcileTimer: Timer?
+    private var onboardingWindow: NSWindow?
 
     init() {
         Preferences.clearLegacyKeys()
@@ -91,6 +92,31 @@ final class AppCoordinator: ObservableObject {
                 self.daemonStatus = self.helperClient.status()
             }
         }
+
+        // Defer onboarding to the next runloop tick so the NSApplication has
+        // finished launching by the time we try to put a window on screen.
+        DispatchQueue.main.async { [weak self] in
+            self?.showOnboardingIfNeeded()
+        }
+    }
+
+    private func showOnboardingIfNeeded() {
+        guard !Preferences.onboardingCompleted else { return }
+
+        let view = OnboardingView(coordinator: self) { [weak self] in
+            Preferences.onboardingCompleted = true
+            self?.onboardingWindow?.close()
+            self?.onboardingWindow = nil
+        }
+        let hosting = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Welcome to waik"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        onboardingWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 
     func setOverride(_ override: ManualOverride) {

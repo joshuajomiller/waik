@@ -4,6 +4,7 @@ enum PreferenceKey {
     static let watchedProcesses = "watchedProcesses"
     static let batteryGuardEnabled = "batteryGuardEnabled"
     static let batteryGuardThreshold = "batteryGuardThreshold"
+    static let onboardingCompleted = "onboardingCompleted"
     // Legacy keys cleared on launch.
     static let legacyWindowSeconds = "windowSeconds"
 }
@@ -53,5 +54,10 @@ enum Preferences {
             return v > 0 ? v : defaultBatteryGuardThreshold
         }
         set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.batteryGuardThreshold) }
+    }
+
+    static var onboardingCompleted: Bool {
+        get { UserDefaults.standard.bool(forKey: PreferenceKey.onboardingCompleted) }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.onboardingCompleted) }
     }
 }
