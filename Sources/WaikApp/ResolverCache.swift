@@ -13,6 +13,11 @@ final class ResolverCache: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.waik.resolver")
     private var ipToHost: [String: String] = [:]
     private var refreshTimer: DispatchSourceTimer?
+    private var lastRefreshAt: Date? = nil
+    // Floor between manual refresh requests. The scheduled timer fires every
+    // 5min regardless; this only debounces eager refreshes triggered by an
+    // unknown-IP cache miss so a burst of new connections can't flood DNS.
+    private let manualRefreshCooldown: TimeInterval = 15.0
 
     init(hostnames: [String] = ResolverCache.defaultHostnames) {
         self.hostnames = hostnames
@@ -26,6 +31,19 @@ final class ResolverCache: @unchecked Sendable {
 
     func hostFor(ip: String) -> String? {
         queue.sync { self.ipToHost[ip] }
+    }
+
+    /// Request an out-of-band DNS refresh. Coalesces requests so multiple
+    /// callers in quick succession trigger at most one round of `getaddrinfo`.
+    func requestRefresh() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            if let last = self.lastRefreshAt,
+               Date().timeIntervalSince(last) < self.manualRefreshCooldown {
+                return
+            }
+            self.refresh()
+        }
     }
 
     private func startTimer() {
@@ -48,6 +66,7 @@ final class ResolverCache: @unchecked Sendable {
             }
             self.queue.async {
                 self.ipToHost = updated
+                self.lastRefreshAt = Date()
             }
         }
     }

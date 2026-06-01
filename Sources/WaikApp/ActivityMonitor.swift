@@ -73,6 +73,19 @@ final class ActivityMonitor: ObservableObject {
         Task.detached(priority: .utility) { [weak self] in
             let connections = SocketScanner.scan()
             let knownIPs = resolver.knownIPs
+
+            // If a watched process is talking on 443 to an IP we don't yet
+            // know, kick the resolver. CDN failover and host rotation can
+            // otherwise leave us blind for up to the scheduled 5-minute tick.
+            let hasUnknownWatchedIP = connections.contains { conn in
+                conn.remotePort == PollEvaluator.monitoredPort
+                    && watched.contains(conn.processName)
+                    && !knownIPs.contains(conn.remoteAddress)
+            }
+            if hasUnknownWatchedIP {
+                resolver.requestRefresh()
+            }
+
             let result = PollEvaluator.evaluate(
                 connections: connections,
                 previousSnapshot: prevSnapshot,
