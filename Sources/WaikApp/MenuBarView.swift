@@ -180,7 +180,45 @@ struct MenuBarView: View {
                 tint: .accentColor,
                 isOn: $coordinator.launchAtLogin
             )
+            ToggleRow(
+                label: "Sleep on low battery",
+                systemImage: "battery.25",
+                tint: .green,
+                isOn: $coordinator.batteryGuardEnabled
+            )
+            if coordinator.batteryGuardEnabled {
+                batteryThresholdRow
+            }
         }
+    }
+
+    private var batteryThresholdRow: some View {
+        HStack(spacing: 8) {
+            Color.clear.frame(width: 16)
+            Text("Below")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Stepper(value: $coordinator.batteryGuardThreshold, in: 5...95, step: 5) {
+                Text("\(coordinator.batteryGuardThreshold)%")
+                    .font(.caption.monospacedDigit())
+                    .frame(width: 30, alignment: .leading)
+            }
+            .controlSize(.mini)
+            Spacer()
+            if let battery = coordinator.batteryState {
+                Text(batteryHint(for: battery))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 4)
+        .transition(.opacity)
+    }
+
+    private func batteryHint(for state: BatteryReader.State) -> String {
+        let pct = Int(state.percentage.rounded())
+        return state.onBattery ? "battery \(pct)%" : "on AC · \(pct)%"
     }
 
     private var forceAwakeBinding: Binding<Bool> {

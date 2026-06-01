@@ -40,6 +40,19 @@ final class AppCoordinator: ObservableObject {
             applyLaunchAtLogin(launchAtLogin)
         }
     }
+    @Published var batteryGuardEnabled: Bool = Preferences.batteryGuardEnabled {
+        didSet {
+            Preferences.batteryGuardEnabled = batteryGuardEnabled
+            reconcile()
+        }
+    }
+    @Published var batteryGuardThreshold: Int = Preferences.batteryGuardThreshold {
+        didSet {
+            Preferences.batteryGuardThreshold = batteryGuardThreshold
+            reconcile()
+        }
+    }
+    @Published private(set) var batteryState: BatteryReader.State? = BatteryReader.current()
 
     private let monitor = ActivityMonitor()
     private let helperClient = HelperClient()
@@ -207,6 +220,10 @@ final class AppCoordinator: ObservableObject {
 
     private func reconcile() {
         let now = Date()
+        if let refreshed = BatteryReader.current(), refreshed != batteryState {
+            batteryState = refreshed
+        }
+
         let active: Bool
         switch manualOverride {
         case .forceAwake:
@@ -214,7 +231,9 @@ final class AppCoordinator: ObservableObject {
         case .pause:
             active = false
         case .none:
-            if let last = monitor.lastActivityAt {
+            if isBatteryGuardActive {
+                active = false
+            } else if let last = monitor.lastActivityAt {
                 active = now.timeIntervalSince(last) < windowSeconds
             } else {
                 active = false
@@ -226,6 +245,14 @@ final class AppCoordinator: ObservableObject {
             apply(next)
             state = next
         }
+    }
+
+    /// True when the user has enabled the battery guard, the machine is
+    /// currently on battery, and the level is below the threshold. Desktops
+    /// (no internal battery) always return false.
+    var isBatteryGuardActive: Bool {
+        guard batteryGuardEnabled, let s = batteryState else { return false }
+        return s.onBattery && s.percentage < Double(batteryGuardThreshold)
     }
 
     private func apply(_ newState: KeepAwakeState) {

@@ -2,6 +2,8 @@ import Foundation
 
 enum PreferenceKey {
     static let watchedProcesses = "watchedProcesses"
+    static let batteryGuardEnabled = "batteryGuardEnabled"
+    static let batteryGuardThreshold = "batteryGuardThreshold"
     // Legacy keys cleared on launch.
     static let legacyWindowSeconds = "windowSeconds"
 }
@@ -20,7 +22,7 @@ enum Preferences {
         "ChatGPT",
     ]
 
-    static let windowSeconds: TimeInterval = 30
+    static let windowSeconds: TimeInterval = 45
 
     static func clearLegacyKeys() {
         UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyWindowSeconds)
@@ -36,5 +38,20 @@ enum Preferences {
         set {
             UserDefaults.standard.set(Array(newValue), forKey: PreferenceKey.watchedProcesses)
         }
+    }
+
+    static let defaultBatteryGuardThreshold: Int = 20
+
+    static var batteryGuardEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: PreferenceKey.batteryGuardEnabled) }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.batteryGuardEnabled) }
+    }
+
+    static var batteryGuardThreshold: Int {
+        get {
+            let v = UserDefaults.standard.integer(forKey: PreferenceKey.batteryGuardThreshold)
+            return v > 0 ? v : defaultBatteryGuardThreshold
+        }
+        set { UserDefaults.standard.set(newValue, forKey: PreferenceKey.batteryGuardThreshold) }
     }
 }
