@@ -42,6 +42,15 @@ Long-running AI agent tasks are exactly the workload macOS gets wrong:
 
 ## Install
 
+### Homebrew (recommended)
+
+```bash
+brew tap joshuajomiller/waik
+brew install --cask waik
+```
+
+(Once the helper daemon is approved on first launch, in-app updates handle the rest.)
+
 ### From source
 
 ```bash
@@ -186,6 +195,15 @@ Once all five are present, the next tagged release auto-notarizes and staples wi
 6. Cut a new release. The workflow signs the .zip, appends an entry to `gh-pages/appcast.xml`, and pushes. Existing users running `waik` will see the update on the next periodic check.
 
 Until you complete those steps, the in-app "Check for updates…" item gracefully reports "Unable to check" — fail-closed by design.
+
+### Enabling the Homebrew cask
+
+1. Create an empty public repo at `joshuajomiller/homebrew-waik` (Homebrew taps must use that prefix).
+2. Generate a fine-grained Personal Access Token with **Contents: read & write** scope on that single repo.
+3. Add it as a repo secret named `HOMEBREW_TAP_TOKEN`.
+4. Cut a release. The workflow renders `Casks/waik.rb` with the new version + sha256 and pushes to `joshuajomiller/homebrew-waik`.
+
+Users can then install with `brew tap joshuajomiller/waik && brew install --cask waik`. The cask in this repo is the source of truth — edit it here, and every subsequent release picks up the changes automatically.
 
 The output is a self-contained `build/waik.app` bundle with the helper daemon inside `Contents/Library/LaunchDaemons`. SMAppService handles registration at first launch.
 

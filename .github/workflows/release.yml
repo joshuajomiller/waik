@@ -169,3 +169,22 @@ jobs:
           Scripts/publish-appcast.sh \
             "${{ steps.package.outputs.artifact }}" \
             "${{ steps.sparkle_tools.outputs.sign_update }}"
+
+      - name: Determine Homebrew bump mode
+        id: brew
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -n "${TOKEN:-}" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Homebrew tap token not set — skipping cask bump."
+          fi
+
+      - name: Bump Homebrew cask
+        if: steps.brew.outputs.publish == 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          Scripts/publish-cask.sh "${{ steps.package.outputs.artifact }}"
