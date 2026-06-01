@@ -3,6 +3,8 @@ import SwiftUI
 struct MenuBarView: View {
     @EnvironmentObject var coordinator: AppCoordinator
     @State private var processesExpanded = false
+    @State private var newProcessName: String = ""
+    @State private var lastAddRejected: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -216,12 +218,51 @@ struct MenuBarView: View {
             }
 
             if processesExpanded {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(coordinator.watchedProcesses).sorted(), id: \.self) { name in
-                        Text(name)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Text(name)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                coordinator.removeWatchedProcess(name)
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove \(name)")
+                        }
                     }
+
+                    HStack(spacing: 6) {
+                        TextField("add (≤15 chars)", text: $newProcessName)
+                            .textFieldStyle(.plain)
+                            .font(.system(.caption, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(.quaternary)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .stroke(lastAddRejected ? Color.red.opacity(0.6) : Color.clear, lineWidth: 1)
+                                    )
+                            )
+                            .onSubmit(commitNewProcess)
+                            .onChange(of: newProcessName) { _ in lastAddRejected = false }
+                        Button(action: commitNewProcess) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(Color.accentColor)
+                                .opacity(canAdd ? 1.0 : 0.35)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canAdd)
+                    }
+                    .padding(.top, 2)
                 }
                 .padding(.leading, 32)
                 .padding(.trailing, 12)
@@ -230,6 +271,22 @@ struct MenuBarView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: processesExpanded)
+    }
+
+    private var canAdd: Bool {
+        let trimmed = newProcessName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty
+            && trimmed.count <= AppCoordinator.maxProcessNameLength
+            && !coordinator.watchedProcesses.contains(trimmed)
+    }
+
+    private func commitNewProcess() {
+        if coordinator.addWatchedProcess(newProcessName) {
+            newProcessName = ""
+            lastAddRejected = false
+        } else {
+            lastAddRejected = true
+        }
     }
 
     // MARK: - Quit

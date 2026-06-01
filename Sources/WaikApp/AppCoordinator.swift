@@ -77,6 +77,25 @@ final class AppCoordinator: ObservableObject {
         manualOverride = override
     }
 
+    /// Kernel comm names are truncated to 15 chars (plus NUL). Anything
+    /// longer would never match a real process.
+    static let maxProcessNameLength = 15
+
+    @discardableResult
+    func addWatchedProcess(_ raw: String) -> Bool {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty,
+              name.count <= Self.maxProcessNameLength,
+              !watchedProcesses.contains(name)
+        else { return false }
+        watchedProcesses.insert(name)
+        return true
+    }
+
+    func removeWatchedProcess(_ name: String) {
+        watchedProcesses.remove(name)
+    }
+
     func quit() {
         apply(.idle)
         NSApp.terminate(nil)
