@@ -21,6 +21,9 @@ SIGN_ID="${SIGN_ID:--}"
 APP_NAME="waik"
 APP_BUNDLE="build/${APP_NAME}.app"
 
+echo "==> Generating app icon"
+Scripts/generate-icon.swift "$ROOT"
+
 echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG" --product waik
 swift build -c "$CONFIG" --product waik-helper
@@ -38,6 +41,7 @@ cp "$BIN_DIR/waik-helper" "$APP_BUNDLE/Contents/MacOS/waik-helper"
 
 cp Resources/Info.plist               "$APP_BUNDLE/Contents/Info.plist"
 cp Resources/com.waik.helper.plist    "$APP_BUNDLE/Contents/Library/LaunchDaemons/com.waik.helper.plist"
+cp Resources/AppIcon.icns             "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
 # PkgInfo (optional but harmless)
 printf 'APPL????' > "$APP_BUNDLE/Contents/PkgInfo"
