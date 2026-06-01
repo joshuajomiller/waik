@@ -9,8 +9,11 @@ struct WaikApp: App {
             MenuBarView()
                 .environmentObject(coordinator)
         } label: {
-            Image(systemName: coordinator.iconSymbolName)
+            Image(nsImage: MenuBarIconImage.render(
+                baseSymbol: coordinator.iconSymbolName,
+                trafficActive: coordinator.trafficActive
+            ))
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
     }
 }

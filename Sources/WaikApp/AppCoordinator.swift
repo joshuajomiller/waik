@@ -21,15 +21,11 @@ final class AppCoordinator: ObservableObject {
 
     @Published private(set) var state: KeepAwakeState = .idle
     @Published private(set) var detection: DetectionInfo? = nil
+    @Published private(set) var trafficActive: Bool = false
     @Published var manualOverride: ManualOverride = .none {
         didSet { reconcile() }
     }
-    @Published var windowSeconds: TimeInterval = Preferences.windowSeconds {
-        didSet {
-            Preferences.windowSeconds = windowSeconds
-            reconcile()
-        }
-    }
+    let windowSeconds: TimeInterval = Preferences.windowSeconds
     @Published var watchedProcesses: Set<String> = Preferences.watchedProcesses {
         didSet {
             Preferences.watchedProcesses = watchedProcesses
@@ -45,6 +41,7 @@ final class AppCoordinator: ObservableObject {
     private var reconcileTimer: Timer?
 
     init() {
+        Preferences.clearLegacyKeys()
         monitor.watchedProcesses = watchedProcesses
 
         monitor.$lastDetection
@@ -53,6 +50,13 @@ final class AppCoordinator: ObservableObject {
                 guard let self else { return }
                 self.detection = info
                 self.reconcile()
+            }
+            .store(in: &cancellables)
+
+        monitor.$trafficActive
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active in
+                self?.trafficActive = active
             }
             .store(in: &cancellables)
 
@@ -92,6 +96,30 @@ final class AppCoordinator: ObservableObject {
         }
     }
 
+    struct EngagedDetail {
+        let processName: String
+        let pid: Int32
+        let lastActivityAt: Date
+        let windowSeconds: TimeInterval
+
+        func remainingSeconds(at now: Date) -> Int {
+            max(0, Int(windowSeconds - now.timeIntervalSince(lastActivityAt)))
+        }
+    }
+
+    /// When non-nil, the menu should render a live countdown rather than a
+    /// static `statusText`.
+    var engagedDetail: EngagedDetail? {
+        guard manualOverride == .none, state == .engaged else { return nil }
+        guard let det = detection, let last = monitor.lastActivityAt else { return nil }
+        return EngagedDetail(
+            processName: det.processName,
+            pid: det.pid,
+            lastActivityAt: last,
+            windowSeconds: windowSeconds
+        )
+    }
+
     var statusText: String {
         switch manualOverride {
         case .forceAwake:
@@ -101,10 +129,6 @@ final class AppCoordinator: ObservableObject {
         case .none:
             switch state {
             case .engaged:
-                if let det = detection {
-                    let remaining = max(0, Int(windowSeconds - Date().timeIntervalSince(det.timestamp)))
-                    return "Active — \(det.processName) (pid \(det.pid)) · \(remaining)s left"
-                }
                 return "Keep-awake engaged"
             case .idle:
                 return "Idle"
@@ -144,8 +168,8 @@ final class AppCoordinator: ObservableObject {
         case .pause:
             active = false
         case .none:
-            if let det = detection {
-                active = now.timeIntervalSince(det.timestamp) < windowSeconds
+            if let last = monitor.lastActivityAt {
+                active = now.timeIntervalSince(last) < windowSeconds
             } else {
                 active = false
             }

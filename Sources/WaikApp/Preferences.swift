@@ -1,33 +1,29 @@
 import Foundation
 
 enum PreferenceKey {
-    static let windowSeconds = "windowSeconds"
     static let watchedProcesses = "watchedProcesses"
+    // Legacy keys cleared on launch.
+    static let legacyWindowSeconds = "windowSeconds"
 }
 
 enum Preferences {
+    // Names here are matched against the kernel-recorded comm name (truncated
+    // to 16 chars), which is what `ps -o comm` shows. Keep them ≤16 chars.
     static let defaultWatchedProcesses: [String] = [
         "claude",
         "codex",
-        "cursor",
-        "Cursor Helper (Renderer)",
+        "Cursor",
         "Cursor Helper",
         "zed",
-        "Code Helper (Renderer)",
+        "Code Helper",
         "Claude",
         "ChatGPT",
     ]
 
-    static let defaultWindowSeconds: TimeInterval = 120
+    static let windowSeconds: TimeInterval = 30
 
-    static var windowSeconds: TimeInterval {
-        get {
-            let v = UserDefaults.standard.double(forKey: PreferenceKey.windowSeconds)
-            return v > 0 ? v : defaultWindowSeconds
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: PreferenceKey.windowSeconds)
-        }
+    static func clearLegacyKeys() {
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyWindowSeconds)
     }
 
     static var watchedProcesses: Set<String> {
