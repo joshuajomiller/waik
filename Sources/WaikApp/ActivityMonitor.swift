@@ -35,12 +35,13 @@ final class ActivityMonitor: ObservableObject {
     // Bridges the gap when sbi_cc happens to be 0 at sample time.
     private let trafficLingerSeconds: TimeInterval = 3.0
     private var lastTrafficAt: Date?
+    private var pollInFlight = false
 
     func start() {
         guard timer == nil else { return }
         let t = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.poll()
+                self?.scheduleTick()
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -59,17 +60,31 @@ final class ActivityMonitor: ObservableObject {
     // `PollEvaluator.evaluate`. Briefly — name-only false-positives on Electron
     // IDE telemetry sockets; IP-only false-positives on every Fastly/Cloudflare
     // tenant sharing edges with the AI providers.
-    private func poll() {
-        let connections = SocketScanner.scan()
-        let knownIPs = resolver.knownIPs
-        let now = Date()
+    private func scheduleTick() {
+        // Drop overlapping ticks. A previous scan still running means the
+        // machine is slow under load — queuing more would only worsen it.
+        guard !pollInFlight else { return }
+        pollInFlight = true
 
-        let result = PollEvaluator.evaluate(
-            connections: connections,
-            previousSnapshot: previousSnapshot,
-            watchedProcesses: watchedProcesses,
-            knownIPs: knownIPs
-        )
+        let watched = watchedProcesses
+        let prevSnapshot = previousSnapshot
+        let resolver = self.resolver
+
+        Task.detached(priority: .utility) { [weak self] in
+            let connections = SocketScanner.scan()
+            let knownIPs = resolver.knownIPs
+            let result = PollEvaluator.evaluate(
+                connections: connections,
+                previousSnapshot: prevSnapshot,
+                watchedProcesses: watched,
+                knownIPs: knownIPs
+            )
+            await self?.commit(result: result, at: Date())
+        }
+    }
+
+    private func commit(result: PollResult, at now: Date) {
+        defer { pollInFlight = false }
         previousSnapshot = result.nextSnapshot
 
         if let pending = result.detection {
