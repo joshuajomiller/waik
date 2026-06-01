@@ -143,6 +143,33 @@ SIGN_ID="Developer ID Application: Your Name (TEAMID)" \
   Scripts/build.sh
 ```
 
+### Release process
+
+Tag a version and push:
+
+```bash
+git tag v0.3.0 && git push --tags
+```
+
+The `Release` workflow builds, signs, packages, and publishes a GitHub Release with the `.app.zip` + sha256 attached. Signing mode is chosen automatically from the secrets you set:
+
+| Mode | Trigger | Result |
+|---|---|---|
+| **Ad-hoc** (default) | `DEVELOPER_ID_CERT_P12_BASE64` not set | Gatekeeper warns users on first launch; they right-click → Open |
+| **Developer ID + notarized** | All five secrets below set | Released `.app` launches cleanly everywhere |
+
+To switch on Developer ID signing + notarization, add these repo secrets at **Settings → Secrets and variables → Actions**:
+
+| Secret | How to generate |
+|---|---|
+| `DEVELOPER_ID_CERT_P12_BASE64` | Export your *Developer ID Application* cert from Keychain Access (right-click → Export, choose `.p12`, set a password). Then `base64 < cert.p12 \| pbcopy` and paste. |
+| `DEVELOPER_ID_CERT_PASSWORD` | The password you set on the `.p12`. |
+| `WAIK_TEAM_ID` | Your 10-character Apple Developer Team ID (Membership page on developer.apple.com). |
+| `AC_APPLE_ID` | The Apple ID associated with your developer account. |
+| `AC_APP_SPECIFIC_PASSWORD` | Generate at appleid.apple.com → Sign-In and Security → App-Specific Passwords. Used by `notarytool`. |
+
+Once all five are present, the next tagged release auto-notarizes and staples without any code changes.
+
 The output is a self-contained `build/waik.app` bundle with the helper daemon inside `Contents/Library/LaunchDaemons`. SMAppService handles registration at first launch.
 
 ### Project layout
