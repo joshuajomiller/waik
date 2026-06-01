@@ -4,5 +4,18 @@
 <dict>
     <key>com.apple.security.app-sandbox</key>
     <false/>
+    <!--
+        Required when running ad-hoc signed under Hardened Runtime: library
+        validation otherwise rejects @rpath frameworks (Sparkle.framework)
+        because neither the host nor the framework carry a Team ID.
+
+        Once Developer ID signing is set up, both the host binary and the
+        embedded framework will carry the same Team ID and library
+        validation can accept the framework without this entitlement —
+        but the entitlement is harmless even then, so we leave it in
+        place for predictable behavior across signing modes.
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
 </dict>
 </plist>

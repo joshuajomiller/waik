@@ -50,6 +50,12 @@ SPARKLE_FRAMEWORK="$BIN_DIR/Sparkle.framework"
 if [ -d "$SPARKLE_FRAMEWORK" ]; then
     mkdir -p "$APP_BUNDLE/Contents/Frameworks"
     ditto "$SPARKLE_FRAMEWORK" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+
+    # SwiftPM-built executables don't get the standard .app rpath. Without
+    # this, dyld looks for @rpath/Sparkle.framework only under
+    # Contents/MacOS (via @loader_path) and fails to launch.
+    install_name_tool -add_rpath @executable_path/../Frameworks \
+        "$APP_BUNDLE/Contents/MacOS/waik" 2>/dev/null || true
 fi
 
 # PkgInfo (optional but harmless)
