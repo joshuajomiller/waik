@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import os
+import WaikCore
 
 struct DetectionInfo: Sendable, Equatable {
     let timestamp: Date
@@ -54,78 +55,48 @@ final class ActivityMonitor: ObservableObject {
         logger.info("ActivityMonitor stopped")
     }
 
+    // Why name+IP must both match: see the matching rationale documented on
+    // `PollEvaluator.evaluate`. Briefly — name-only false-positives on Electron
+    // IDE telemetry sockets; IP-only false-positives on every Fastly/Cloudflare
+    // tenant sharing edges with the AI providers.
     private func poll() {
         let connections = SocketScanner.scan()
         let knownIPs = resolver.knownIPs
         let now = Date()
 
-        var detection: DetectionInfo? = nil
-        var sawTraffic = false
+        let result = PollEvaluator.evaluate(
+            connections: connections,
+            previousSnapshot: previousSnapshot,
+            watchedProcesses: watchedProcesses,
+            knownIPs: knownIPs
+        )
+        previousSnapshot = result.nextSnapshot
 
-        for conn in connections {
-            guard conn.remotePort == 443 else { continue }
-
-            let key = "\(conn.pid)-\(conn.remoteAddress):\(conn.remotePort)"
-            let prev = previousSnapshot[key]
-            let bytesAdvanced = (prev != nil) && (prev!.bytesInBuffer != conn.bytesInBuffer)
-
-            let nameMatch = watchedProcesses.contains(conn.processName)
-            let ipMatch = knownIPs.contains(conn.remoteAddress)
-
-            // A connection counts as "an AI agent task" only when BOTH:
-            //   1. The process is on the watchlist (claude/codex/ChatGPT/...)
-            //   2. The remote IP is in the resolver cache for a known AI host.
-            //
-            // We deliberately do NOT trigger on either signal alone:
-            //  - Name-only would false-positive on Electron IDEs (Cursor, Zed)
-            //    whose helpers keep idle telemetry/sync sockets to their own
-            //    backends.
-            //  - IP-only would false-positive on every other service sharing
-            //    Fastly/Cloudflare edge IPs (e.g. Google Drive hitting
-            //    160.79.104.10) or any Google product, since
-            //    `generativelanguage.googleapis.com` resolves into Google's
-            //    general IP space (142.250.x.x).
-            let active = nameMatch && ipMatch
-
-            // Traffic indicator: any active connection with bytes in flight.
-            // sbi_cc is current buffer occupancy (not cumulative) and is drained
-            // fast, so accept fresh deltas or first-sighting as evidence too.
-            if active && (bytesAdvanced || prev == nil || conn.bytesInBuffer > 0) {
-                sawTraffic = true
+        if let pending = result.detection {
+            // Only refresh the keep-awake window on real byte movement.
+            // Bare existence of an idle pooled HTTPS connection to an AI host
+            // would otherwise pin the window forever (Claude Code keeps such
+            // sockets open between requests).
+            if result.sawTraffic {
+                lastActivityAt = now
             }
-
-            if active && detection == nil {
-                detection = DetectionInfo(
+            let identityChanged = lastDetection.map {
+                $0.pid != pending.pid
+                    || $0.processName != pending.processName
+                    || $0.remoteAddress != pending.remoteAddress
+            } ?? true
+            if identityChanged {
+                lastDetection = DetectionInfo(
                     timestamp: now,
-                    pid: conn.pid,
-                    processName: conn.processName,
-                    remoteAddress: conn.remoteAddress,
-                    remoteHost: resolver.hostFor(ip: conn.remoteAddress)
+                    pid: pending.pid,
+                    processName: pending.processName,
+                    remoteAddress: pending.remoteAddress,
+                    remoteHost: resolver.hostFor(ip: pending.remoteAddress)
                 )
             }
         }
 
-        var nextSnapshot: [String: ScannedConnection] = [:]
-        nextSnapshot.reserveCapacity(connections.count)
-        for conn in connections {
-            let key = "\(conn.pid)-\(conn.remoteAddress):\(conn.remotePort)"
-            nextSnapshot[key] = conn
-        }
-        previousSnapshot = nextSnapshot
-
-        if let detection {
-            lastActivityAt = now
-            let identityChanged = lastDetection.map {
-                $0.pid != detection.pid
-                    || $0.processName != detection.processName
-                    || $0.remoteAddress != detection.remoteAddress
-            } ?? true
-            if identityChanged {
-                lastDetection = detection
-            }
-        }
-
-        if sawTraffic {
+        if result.sawTraffic {
             lastTrafficAt = now
         }
         let nextTrafficActive: Bool

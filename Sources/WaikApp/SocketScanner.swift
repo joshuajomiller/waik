@@ -1,13 +1,6 @@
 import Foundation
 import CProcInfo
-
-struct ScannedConnection: Sendable, Hashable {
-    let pid: Int32
-    let processName: String
-    let remoteAddress: String
-    let remotePort: UInt16
-    let bytesInBuffer: UInt32
-}
+import WaikCore
 
 enum SocketScanner {
     private static let maxConnections = 4096

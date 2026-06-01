@@ -14,13 +14,17 @@ let package = Package(
             path: "Sources/WaikShared"
         ),
         .target(
+            name: "WaikCore",
+            path: "Sources/WaikCore"
+        ),
+        .target(
             name: "CProcInfo",
             path: "Sources/CProcInfo",
             publicHeadersPath: "include"
         ),
         .executableTarget(
             name: "WaikApp",
-            dependencies: ["WaikShared", "CProcInfo"],
+            dependencies: ["WaikShared", "WaikCore", "CProcInfo"],
             path: "Sources/WaikApp",
             linkerSettings: [
                 .linkedFramework("IOKit"),
@@ -36,6 +40,11 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("IOKit"),
             ]
+        ),
+        .testTarget(
+            name: "WaikCoreTests",
+            dependencies: ["WaikCore"],
+            path: "Tests/WaikCoreTests"
         ),
     ]
 )
