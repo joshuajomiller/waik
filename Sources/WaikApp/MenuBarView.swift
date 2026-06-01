@@ -174,6 +174,12 @@ struct MenuBarView: View {
                 tint: .secondary,
                 isOn: pauseBinding
             )
+            ToggleRow(
+                label: "Launch at login",
+                systemImage: "arrow.up.forward.app.fill",
+                tint: .accentColor,
+                isOn: $coordinator.launchAtLogin
+            )
         }
     }
 

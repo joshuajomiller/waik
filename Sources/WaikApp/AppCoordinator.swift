@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 import AppKit
+import ServiceManagement
 import os
 
 enum KeepAwakeState: Sendable, Equatable {
@@ -33,6 +34,12 @@ final class AppCoordinator: ObservableObject {
         }
     }
     @Published private(set) var daemonStatus: DaemonStatus = .unknown
+    @Published var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled {
+        didSet {
+            guard launchAtLogin != oldValue else { return }
+            applyLaunchAtLogin(launchAtLogin)
+        }
+    }
 
     private let monitor = ActivityMonitor()
     private let helperClient = HelperClient()
@@ -94,6 +101,26 @@ final class AppCoordinator: ObservableObject {
 
     func removeWatchedProcess(_ name: String) {
         watchedProcesses.remove(name)
+    }
+
+    private func applyLaunchAtLogin(_ on: Bool) {
+        let service = SMAppService.mainApp
+        do {
+            if on {
+                try service.register()
+                logger.info("Registered main app login item")
+            } else {
+                try service.unregister()
+                logger.info("Unregistered main app login item")
+            }
+        } catch {
+            logger.error("Login item toggle failed: \(error.localizedDescription, privacy: .public)")
+            // Roll back the published value so the toggle reflects reality.
+            let actual = service.status == .enabled
+            if actual != launchAtLogin {
+                launchAtLogin = actual
+            }
+        }
     }
 
     func quit() {
