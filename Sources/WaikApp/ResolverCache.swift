@@ -7,6 +7,15 @@ final class ResolverCache: @unchecked Sendable {
         "api.openai.com",
         "chatgpt.com",
         "generativelanguage.googleapis.com",
+        // Cursor's gateway endpoints. The AWS-backed `api2` rotates across
+        // an ELB pool so a single getaddrinfo() rarely covers the live IP,
+        // but a resolved entry is still useful for hostFor() display when
+        // it does land. The matching itself is name+CPU, not name+IP.
+        "api2.cursor.sh",
+        "api3.cursor.sh",
+        "api.cursor.sh",
+        "repo42.cursor.sh",
+        "cursor.sh",
     ]
 
     private let hostnames: [String]

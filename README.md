@@ -108,13 +108,13 @@ Every second, `waik`:
 
 1. Enumerates every PID via `sysctl(KERN_PROC_ALL)` (the heavily-filtered `proc_listallpids` misses Electron apps on macOS 14+).
 2. For each PID, asks the kernel for its open TCP connections via `proc_pidinfo(PROC_PIDFDSOCKETINFO)`.
-3. Matches each connection against the watched-process list **and** a periodically-refreshed DNS cache of known AI hostnames.
-4. If a matched connection exists, samples that process's cumulative CPU time via `proc_pidinfo(PROC_PIDTASKINFO)` and compares to the previous tick. Above the activity threshold, the keep-awake window is refreshed.
+3. Picks out every connection on port 443 owned by a watched process. A DNS cache of known AI hostnames is consulted for display purposes, not for the match itself — Cursor's AWS-ELB pool rotates faster than `getaddrinfo` can keep up.
+4. Samples cumulative CPU time for *every* matched PID via `proc_pidinfo(PROC_PIDTASKINFO)`. If any one of them crossed the activity threshold since the previous tick, the keep-awake window is refreshed.
 5. As long as the window is alive, an `IOPMAssertionCreateWithName(kIOPMAssertionTypeNoIdleSleep)` is held in-process *and* the helper daemon disables system sleep via `pmset`.
 
 ### Why CPU delta, not socket bytes
 
-The obvious-looking signal — TCP send/receive buffer occupancy (`sbi_cc`) — does not work for streaming responses. Both the kernel and the userspace consume the buffer faster than any practical sampling rate; instrumented runs at 5 Hz observed `sbi_cc = 0` continuously on actively-streaming Anthropic connections. Cumulative process CPU time, by contrast, monotonically advances whenever the watched process decodes tokens, redraws its TUI, or dispatches tool calls. The default threshold is **0.5 % CPU per second** — well above the noise floor of an idle SSE keep-alive and reliably below the floor of a streaming response.
+The obvious-looking signal — TCP send/receive buffer occupancy (`sbi_cc`) — does not work for streaming responses. Both the kernel and the userspace consume the buffer faster than any practical sampling rate; instrumented runs at 5 Hz observed `sbi_cc = 0` continuously on actively-streaming Anthropic connections. Cumulative process CPU time, by contrast, monotonically advances whenever the watched process decodes tokens, redraws its TUI, or dispatches tool calls. The default threshold is **0.5 % CPU per second** — well above the noise floor of an idle SSE keep-alive and reliably below the floor of a streaming response. The threshold also serves as the safety filter against name-only false positives (Electron telemetry sockets etc. don't burn enough CPU to trip it).
 
 The window decays naturally (default 45s) once activity stops. If the watched process drops below the CPU threshold for the full window, the assertion is released and the machine is free to sleep.
 
@@ -122,12 +122,12 @@ The window decays naturally (default 45s) once activity stops. If the watched pr
 
 `waik` is intentionally minimal. The defaults are good. If you need to tune them, the watchlists live in `Sources/WaikApp/Preferences.swift` and `Sources/WaikApp/ResolverCache.swift`:
 
-| Default watched processes | Default AI hosts |
+| Default watched processes | Default AI hosts (for display) |
 |---|---|
-| `claude`, `codex` | `api.anthropic.com` |
-| `Claude`, `ChatGPT` | `api.openai.com` |
-| `Cursor`, `Cursor Helper` | `chatgpt.com` |
-| `zed`, `Code Helper` | `generativelanguage.googleapis.com` |
+| `claude`, `codex` | `api.anthropic.com`, `api.openai.com` |
+| `Claude`, `ChatGPT` | `chatgpt.com`, `generativelanguage.googleapis.com` |
+| `Cursor`, `Cursor Helper` | `api2.cursor.sh`, `api3.cursor.sh`, `api.cursor.sh` |
+| `zed`, `Code Helper` | `repo42.cursor.sh`, `cursor.sh` |
 
 > Process names are matched against the kernel-recorded `comm` name (truncated to 16 chars by Darwin — same as what `ps -o comm` shows). Keep custom entries ≤ 16 characters.
 

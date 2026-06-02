@@ -50,7 +50,11 @@ final class ActivityMonitor: ObservableObject {
     // active. Idle Claude Code waiting for input typically sits well below
     // this; streaming a response easily exceeds it.
     private let cpuDeltaThresholdNsPerSec: UInt64 = 5_000_000  // 0.5% CPU
-    private var lastCPUSample: (pid: Int32, cpuNs: UInt64, at: Date)? = nil
+    // Per-PID CPU baseline. We track every matched PID independently so that
+    // active streaming on a "secondary" watched process (e.g. Cursor Helper
+    // running behind codex in the same session) still refreshes the window
+    // even when its connection didn't win the singular detection slot.
+    private var cpuSamples: [Int32: (cpuNs: UInt64, at: Date)] = [:]
 
     func start() {
         guard timer == nil else { return }
@@ -107,42 +111,44 @@ final class ActivityMonitor: ObservableObject {
                 watchedProcesses: watched,
                 knownIPs: knownIPs
             )
-            var cpuNs: UInt64 = 0
-            if let pid = result.detection?.pid {
-                cpuNs = waik_pid_cpu_ns(pid)
+            var cpuByPID: [Int32: UInt64] = [:]
+            for pid in result.matchedPIDs {
+                let ns = waik_pid_cpu_ns(pid)
+                if ns > 0 { cpuByPID[pid] = ns }
             }
-            await self?.commit(result: result, cpuNs: cpuNs, at: Date())
+            await self?.commit(result: result, cpuByPID: cpuByPID, at: Date())
         }
     }
 
-    private func commit(result: PollResult, cpuNs: UInt64, at now: Date) {
+    private func commit(result: PollResult, cpuByPID: [Int32: UInt64], at now: Date) {
         defer { pollInFlight = false }
         previousSnapshot = result.nextSnapshot
 
         if let pending = result.detection {
-            // CPU-delta is the primary activity signal — see the field comment
-            // on `cpuDeltaThresholdNsPerSec` for why `sbi_cc` cannot stand on
-            // its own. `result.sawTraffic` still wins on first sighting of a
-            // new connection (prev==nil → considered traffic) so the keep-awake
-            // engages immediately when a connection opens, before we have a
-            // CPU sample to compare against.
-            var cpuActive = false
-            if let prev = lastCPUSample,
-               prev.pid == pending.pid,
-               cpuNs > prev.cpuNs
-            {
-                let elapsed = now.timeIntervalSince(prev.at)
-                if elapsed > 0 {
-                    let deltaNs = cpuNs - prev.cpuNs
-                    let thresholdNs = UInt64(elapsed * Double(cpuDeltaThresholdNsPerSec))
-                    cpuActive = deltaNs >= thresholdNs
+            // CPU-delta is the primary activity signal — see the field
+            // comment on `cpuDeltaThresholdNsPerSec` for why `sbi_cc` cannot
+            // stand on its own. Sample every matched PID; if any one of them
+            // crosses the threshold, the window is refreshed. Tracking only
+            // the singular detection PID would miss activity on a secondary
+            // watched process (e.g. Cursor Helper streaming while codex
+            // happens to win the detection slot).
+            var anyCPUActive = false
+            for (pid, cpuNs) in cpuByPID {
+                if let prev = cpuSamples[pid], cpuNs > prev.cpuNs {
+                    let elapsed = now.timeIntervalSince(prev.at)
+                    if elapsed > 0 {
+                        let deltaNs = cpuNs - prev.cpuNs
+                        let thresholdNs = UInt64(elapsed * Double(cpuDeltaThresholdNsPerSec))
+                        if deltaNs >= thresholdNs { anyCPUActive = true }
+                    }
                 }
+                cpuSamples[pid] = (cpuNs, now)
             }
-            if cpuNs > 0 {
-                lastCPUSample = (pending.pid, cpuNs, now)
-            }
+            // Garbage-collect baselines for PIDs that are no longer matched
+            // so a stale baseline doesn't survive a process restart.
+            cpuSamples = cpuSamples.filter { result.matchedPIDs.contains($0.key) }
 
-            if result.sawTraffic || cpuActive {
+            if result.sawTraffic || anyCPUActive {
                 lastActivityAt = now
                 lastTrafficAt = now
             }
@@ -162,9 +168,9 @@ final class ActivityMonitor: ObservableObject {
                 )
             }
         } else {
-            // No matching connection — drop the CPU baseline so a future
+            // No matching connection — drop CPU baselines so a future
             // re-detection of a different PID doesn't see a stale delta.
-            lastCPUSample = nil
+            cpuSamples.removeAll()
         }
 
         let nextTrafficActive: Bool

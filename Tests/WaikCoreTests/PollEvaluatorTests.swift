@@ -49,7 +49,11 @@ final class PollEvaluatorTests: XCTestCase {
         XCTAssertFalse(r.sawTraffic)
     }
 
-    func test_noIPMatch_noDetection() {
+    func test_nameOnlyMatch_yieldsDetection() {
+        // Cursor's AWS-ELB pool rotates faster than getaddrinfo() can keep
+        // up with — the matching rule deliberately allows a name-only match
+        // so the connection still surfaces. The CPU-delta gate downstream
+        // is what protects against Electron telemetry false positives.
         let c = conn(ip: "9.9.9.9", bytes: 100)
         let r = PollEvaluator.evaluate(
             connections: [c],
@@ -57,8 +61,23 @@ final class PollEvaluatorTests: XCTestCase {
             watchedProcesses: watched,
             knownIPs: knownIPs
         )
-        XCTAssertNil(r.detection)
-        XCTAssertFalse(r.sawTraffic)
+        XCTAssertEqual(r.detection?.remoteAddress, "9.9.9.9")
+        XCTAssertTrue(r.sawTraffic)
+    }
+
+    func test_ipMatchUpgradesNameOnlyDetection() {
+        // When multiple watched connections exist, prefer the one with a
+        // known-AI-host IP so the displayed remoteHost is meaningful.
+        let unknown = conn(pid: 1001, ip: "9.9.9.9")
+        let known   = conn(pid: 1002, ip: "1.2.3.4")
+        let r = PollEvaluator.evaluate(
+            connections: [unknown, known],
+            previousSnapshot: [:],
+            watchedProcesses: watched,
+            knownIPs: knownIPs
+        )
+        XCTAssertEqual(r.detection?.pid, 1002)
+        XCTAssertEqual(r.detection?.remoteAddress, "1.2.3.4")
     }
 
     func test_nameAndIPMatch_firstSighting_yieldsDetectionAndTraffic() {
