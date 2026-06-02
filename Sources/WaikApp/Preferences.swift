@@ -20,7 +20,6 @@ enum Preferences {
         "Cursor Helper",
         "zed",
         "Code Helper",
-        "Claude",
     ]
 
     static let windowSeconds: TimeInterval = 45
