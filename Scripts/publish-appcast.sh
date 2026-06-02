@@ -8,6 +8,8 @@
 #   GITHUB_TOKEN             – auto-provided in Actions, needs `contents: write`
 #   GITHUB_REPOSITORY        – e.g. joshuajomiller/waik
 #   GITHUB_REF_NAME          – e.g. v0.3.0
+#   BUILD_NUMBER             – monotonic integer (matches CFBundleVersion); used
+#                              as sparkle:version for the appcast comparator
 #   RUNNER_TEMP              – workspace dir (Actions sets this; falls back to /tmp)
 #
 # Inputs:
@@ -30,6 +32,7 @@ printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$KEY_FILE"
 chmod 600 "$KEY_FILE"
 
 VERSION="${GITHUB_REF_NAME#v}"
+SPARKLE_VERSION="${BUILD_NUMBER:-$VERSION}"
 DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$(basename "$ARTIFACT")"
 LENGTH="$(stat -f%z "$ARTIFACT")"
 PUBDATE="$(date -R)"
@@ -48,7 +51,7 @@ cat > "$ITEM_FILE" <<EOF
         <item>
             <title>Version ${VERSION}</title>
             <pubDate>${PUBDATE}</pubDate>
-            <sparkle:version>${VERSION}</sparkle:version>
+            <sparkle:version>${SPARKLE_VERSION}</sparkle:version>
             <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure

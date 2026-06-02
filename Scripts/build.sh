@@ -43,14 +43,20 @@ cp Resources/Info.plist               "$APP_BUNDLE/Contents/Info.plist"
 cp Resources/com.waik.helper.plist    "$APP_BUNDLE/Contents/Library/LaunchDaemons/com.waik.helper.plist"
 cp Resources/AppIcon.icns             "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
-# Stamp the marketing version into the bundle plist. Sparkle's update check
-# compares CFBundleVersion (numeric) of the running app against sparkle:version
-# in the appcast — they must be the same encoding or every check returns
-# "you are up to date" regardless of release order.
+# Stamp release versions into the bundle plist.
+#
+# CFBundleShortVersionString = marketing version shown to the user (e.g. "0.4.6").
+# CFBundleVersion            = monotonic build number Sparkle uses for its
+#                              "is this newer?" comparison against sparkle:version
+#                              in the appcast. A unix timestamp keeps it strictly
+#                              increasing across releases and always > the legacy
+#                              hardcoded "1" that pre-fix builds shipped with.
 if [ -n "${MARKETING_VERSION:-}" ]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" \
         "$APP_BUNDLE/Contents/Info.plist"
-    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $MARKETING_VERSION" \
+fi
+if [ -n "${BUILD_NUMBER:-}" ]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
         "$APP_BUNDLE/Contents/Info.plist"
 fi
 

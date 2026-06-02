@@ -44,6 +44,13 @@ jobs:
           swift --version
           xcodebuild -version
 
+      - name: Compute build number
+        # Sparkle compares sparkle:version against the running app's
+        # CFBundleVersion. Use a unix timestamp so each release is strictly
+        # greater than any prior CFBundleVersion — including the legacy "1"
+        # that shipped before this fix.
+        run: echo "BUILD_NUMBER=$(date -u +%s)" >> "$GITHUB_ENV"
+
       - name: Test
         run: swift test
 
