@@ -28,5 +28,17 @@
                 type="application/octet-stream"
                 sparkle:edSignature="HNhTxVPh1Krp+CYzvCyoJ6xmGub5zUN8NXVs06AGlkg3yxf+UpqjrqPAlPVtet57Z8+Kpc20M2YhndbYdeOoBA==" />
         </item>
+        <item>
+            <title>Version 0.4.6</title>
+            <pubDate>Tue, 02 Jun 2026 13:17:28 +0000</pubDate>
+            <sparkle:version>1780406201</sparkle:version>
+            <sparkle:shortVersionString>0.4.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/joshuajomiller/waik/releases/download/v0.4.6/waik-v0.4.6.zip"
+                length="2795864"
+                type="application/octet-stream"
+                sparkle:edSignature="AaeEljrM6HyjBspJ2EvXVloJLgzfQm4yc5vaC9m1K4AGefUUdrVeSrJrj31QEMDCwq/GuQIs03R47i4NTmA/CQ==" />
+        </item>
     </channel>
 </rss>
