@@ -37,7 +37,7 @@ Long-running AI agent tasks are exactly the workload macOS gets wrong:
 - **Smart detection.** Triggers only when a watched process **and** a known AI host are on the same connection — no false positives from Electron telemetry or Google Drive sharing Fastly IPs with `generativelanguage.googleapis.com`.
 - **Live, slick popover.** Translucent menu bar UI with a live countdown, animated receiving indicator, and one-click overrides.
 - **System-wide sleep control.** Optional helper daemon (registered via `SMAppService`) prevents *system* sleep too — not just display sleep — so lid-closed sessions on external power keep running.
-- **Cheap and quiet.** ~1 Hz polling of socket buffer occupancy. No packet inspection, no kernel extension, no admin password, no network proxy.
+- **Cheap and quiet.** 1 Hz polling of socket tables plus per-process CPU deltas to detect streaming work. No packet inspection, no kernel extension, no admin password, no network proxy.
 - **Native SwiftUI.** Single binary, no Electron, no Python runtime.
 
 ## Install
@@ -87,7 +87,7 @@ That's it. Most users will install it and never open the menu again.
 ┌─────────────────┐    1 Hz    ┌──────────────────┐
 │ SocketScanner   │ ─────────▶ │ ActivityMonitor  │
 │ (proc_pidinfo)  │            │   - process×IP   │
-└─────────────────┘            │   - byte deltas  │
+└─────────────────┘            │   - CPU delta    │
         ▲                      └─────────┬────────┘
         │                                │
 ┌───────┴─────────┐                      ▼
@@ -107,12 +107,16 @@ That's it. Most users will install it and never open the menu again.
 Every second, `waik`:
 
 1. Enumerates every PID via `sysctl(KERN_PROC_ALL)` (the heavily-filtered `proc_listallpids` misses Electron apps on macOS 14+).
-2. For each PID, asks the kernel for its open TCP connections and the current send/receive buffer occupancy via `proc_pidinfo(PROC_PIDFDSOCKETINFO)`.
+2. For each PID, asks the kernel for its open TCP connections via `proc_pidinfo(PROC_PIDFDSOCKETINFO)`.
 3. Matches each connection against the watched-process list **and** a periodically-refreshed DNS cache of known AI hostnames.
-4. If a matching connection has bytes in flight (or just appeared), the keep-awake window is refreshed.
+4. If a matched connection exists, samples that process's cumulative CPU time via `proc_pidinfo(PROC_PIDTASKINFO)` and compares to the previous tick. Above the activity threshold, the keep-awake window is refreshed.
 5. As long as the window is alive, an `IOPMAssertionCreateWithName(kIOPMAssertionTypeNoIdleSleep)` is held in-process *and* the helper daemon disables system sleep via `pmset`.
 
-The window decays naturally (default 45s) once traffic stops. If no traffic returns before it expires, the assertion is released and the machine is free to sleep.
+### Why CPU delta, not socket bytes
+
+The obvious-looking signal — TCP send/receive buffer occupancy (`sbi_cc`) — does not work for streaming responses. Both the kernel and the userspace consume the buffer faster than any practical sampling rate; instrumented runs at 5 Hz observed `sbi_cc = 0` continuously on actively-streaming Anthropic connections. Cumulative process CPU time, by contrast, monotonically advances whenever the watched process decodes tokens, redraws its TUI, or dispatches tool calls. The default threshold is **0.5 % CPU per second** — well above the noise floor of an idle SSE keep-alive and reliably below the floor of a streaming response.
+
+The window decays naturally (default 45s) once activity stops. If the watched process drops below the CPU threshold for the full window, the assertion is released and the machine is free to sleep.
 
 ## Configuration
 
@@ -133,7 +137,7 @@ The grace window is fixed at 45 seconds — long enough to bridge SSE keep-alive
 
 `waik` runs entirely on-device and never sees a single packet payload.
 
-- It uses the same `proc_pidinfo` APIs that `lsof` and `nettop` use to read connection 5-tuples and buffer counters — never packet bodies.
+- It uses the same `proc_pidinfo` APIs that `lsof`, `nettop`, and `top` use to read connection 5-tuples and per-process CPU times — never packet bodies, never process memory.
 - It resolves a small fixed list of AI hostnames to IPs via the system resolver every 5 minutes. No other DNS activity.
 - No analytics, no telemetry, no auto-update phoning home. There is no network code in the app *at all* beyond the periodic `getaddrinfo` for the host cache.
 - The helper daemon's entire XPC surface is two methods: `ping()` and `setSleepDisabled(Bool)`.

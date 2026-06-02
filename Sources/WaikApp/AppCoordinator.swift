@@ -177,7 +177,10 @@ final class AppCoordinator: ObservableObject {
         switch (state, manualOverride) {
         case (.engaged, _):           return "bolt.fill"
         case (.idle, .pause):         return "pause.circle"
-        case (.idle, _):              return "moon"
+        // Outline bolt for idle: same brand family as the engaged `bolt.fill`,
+        // with filled/unfilled communicating the state. Crucially not a moon
+        // — Focus mode owns the crescent in the menu bar.
+        case (.idle, _):              return "bolt"
         }
     }
 

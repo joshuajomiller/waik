@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import os
+import CProcInfo
 import WaikCore
 
 struct DetectionInfo: Sendable, Equatable {
@@ -30,12 +31,26 @@ final class ActivityMonitor: ObservableObject {
     private var previousSnapshot: [String: ScannedConnection] = [:]
     private var timer: Timer?
     private let pollInterval: TimeInterval = 1.0
-    // After observing live traffic on a matched connection, keep `trafficActive`
-    // true for this long even if subsequent polls don't catch a non-zero buffer.
-    // Bridges the gap when sbi_cc happens to be 0 at sample time.
+    // After observing real activity, keep `trafficActive` true for this long
+    // even if subsequent polls don't catch movement.
     private let trafficLingerSeconds: TimeInterval = 3.0
     private var lastTrafficAt: Date?
     private var pollInFlight = false
+
+    // CPU-delta signal. `sbi_cc` (kernel TCP buffer occupancy) reads zero
+    // continuously on streaming SSE connections because both the kernel and
+    // userspace drain the buffer faster than any sampling rate we can afford
+    // — verified empirically with 5Hz probes returning maxBuf=0 mid-stream.
+    // Cumulative CPU time, in contrast, monotonically increases whenever the
+    // watched process does real work (decoding tokens, redrawing TUI,
+    // dispatching tool calls).
+    //
+    // Threshold: a watched process consuming more than `cpuDeltaThresholdNs`
+    // nanoseconds of CPU per second of wall clock (= 0.5%) is considered
+    // active. Idle Claude Code waiting for input typically sits well below
+    // this; streaming a response easily exceeds it.
+    private let cpuDeltaThresholdNsPerSec: UInt64 = 5_000_000  // 0.5% CPU
+    private var lastCPUSample: (pid: Int32, cpuNs: UInt64, at: Date)? = nil
 
     func start() {
         guard timer == nil else { return }
@@ -92,22 +107,46 @@ final class ActivityMonitor: ObservableObject {
                 watchedProcesses: watched,
                 knownIPs: knownIPs
             )
-            await self?.commit(result: result, at: Date())
+            var cpuNs: UInt64 = 0
+            if let pid = result.detection?.pid {
+                cpuNs = waik_pid_cpu_ns(pid)
+            }
+            await self?.commit(result: result, cpuNs: cpuNs, at: Date())
         }
     }
 
-    private func commit(result: PollResult, at now: Date) {
+    private func commit(result: PollResult, cpuNs: UInt64, at now: Date) {
         defer { pollInFlight = false }
         previousSnapshot = result.nextSnapshot
 
         if let pending = result.detection {
-            // Only refresh the keep-awake window on real byte movement.
-            // Bare existence of an idle pooled HTTPS connection to an AI host
-            // would otherwise pin the window forever (Claude Code keeps such
-            // sockets open between requests).
-            if result.sawTraffic {
-                lastActivityAt = now
+            // CPU-delta is the primary activity signal — see the field comment
+            // on `cpuDeltaThresholdNsPerSec` for why `sbi_cc` cannot stand on
+            // its own. `result.sawTraffic` still wins on first sighting of a
+            // new connection (prev==nil → considered traffic) so the keep-awake
+            // engages immediately when a connection opens, before we have a
+            // CPU sample to compare against.
+            var cpuActive = false
+            if let prev = lastCPUSample,
+               prev.pid == pending.pid,
+               cpuNs > prev.cpuNs
+            {
+                let elapsed = now.timeIntervalSince(prev.at)
+                if elapsed > 0 {
+                    let deltaNs = cpuNs - prev.cpuNs
+                    let thresholdNs = UInt64(elapsed * Double(cpuDeltaThresholdNsPerSec))
+                    cpuActive = deltaNs >= thresholdNs
+                }
             }
+            if cpuNs > 0 {
+                lastCPUSample = (pending.pid, cpuNs, now)
+            }
+
+            if result.sawTraffic || cpuActive {
+                lastActivityAt = now
+                lastTrafficAt = now
+            }
+
             let identityChanged = lastDetection.map {
                 $0.pid != pending.pid
                     || $0.processName != pending.processName
@@ -122,11 +161,12 @@ final class ActivityMonitor: ObservableObject {
                     remoteHost: resolver.hostFor(ip: pending.remoteAddress)
                 )
             }
+        } else {
+            // No matching connection — drop the CPU baseline so a future
+            // re-detection of a different PID doesn't see a stale delta.
+            lastCPUSample = nil
         }
 
-        if result.sawTraffic {
-            lastTrafficAt = now
-        }
         let nextTrafficActive: Bool
         if let last = lastTrafficAt {
             nextTrafficActive = now.timeIntervalSince(last) < trafficLingerSeconds
