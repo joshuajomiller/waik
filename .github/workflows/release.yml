@@ -97,7 +97,11 @@ jobs:
       - name: Build release bundle
         env:
           CONFIG: release
-        run: Scripts/build.sh
+          MARKETING_VERSION: ${{ github.ref_name }}
+        run: |
+          # Strip the leading "v" so the plist holds a clean SemVer string.
+          export MARKETING_VERSION="${MARKETING_VERSION#v}"
+          Scripts/build.sh
 
       - name: Notarize and staple
         if: steps.signing.outputs.mode == 'developer-id'

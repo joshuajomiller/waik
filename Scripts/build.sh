@@ -43,6 +43,17 @@ cp Resources/Info.plist               "$APP_BUNDLE/Contents/Info.plist"
 cp Resources/com.waik.helper.plist    "$APP_BUNDLE/Contents/Library/LaunchDaemons/com.waik.helper.plist"
 cp Resources/AppIcon.icns             "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
+# Stamp the marketing version into the bundle plist. Sparkle's update check
+# compares CFBundleVersion (numeric) of the running app against sparkle:version
+# in the appcast — they must be the same encoding or every check returns
+# "you are up to date" regardless of release order.
+if [ -n "${MARKETING_VERSION:-}" ]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" \
+        "$APP_BUNDLE/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $MARKETING_VERSION" \
+        "$APP_BUNDLE/Contents/Info.plist"
+fi
+
 # Embed Sparkle.framework. SwiftPM builds the framework next to the
 # executable; the .app expects it under Contents/Frameworks. ditto
 # preserves symlinks (the framework heavily relies on Versions/Current).
