@@ -77,7 +77,7 @@ struct OnboardingView: View {
             Text("Welcome to waik")
                 .font(.largeTitle.weight(.semibold))
 
-            Text("waik watches your AI agent processes — Claude Code, Codex, Cursor, Zed, ChatGPT — and holds your Mac awake while one of them is doing real work. The moment activity stops, your Mac sleeps again.")
+            Text("waik watches your AI agent processes — Claude Code, Codex, Cursor, Zed — and holds your Mac awake while one of them is doing real work. The moment activity stops, your Mac sleeps again.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

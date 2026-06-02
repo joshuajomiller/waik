@@ -27,11 +27,20 @@ final class AppCoordinator: ObservableObject {
         didSet { reconcile() }
     }
     let windowSeconds: TimeInterval = Preferences.windowSeconds
-    @Published var watchedProcesses: Set<String> = Preferences.watchedProcesses {
+    /// The canonical list of processes the app knows how to watch. The user
+    /// can toggle each one on/off — adding ad-hoc names is intentionally
+    /// not exposed; the default list is curated to match the AI tools that
+    /// ship with a kernel-comm name we can reliably detect.
+    let availableProcesses: [String] = Preferences.defaultWatchedProcesses
+    @Published var disabledProcesses: Set<String> = Preferences.disabledProcesses {
         didSet {
-            Preferences.watchedProcesses = watchedProcesses
+            Preferences.disabledProcesses = disabledProcesses
             monitor.watchedProcesses = watchedProcesses
         }
+    }
+    /// The effective set passed to `ActivityMonitor` each tick.
+    var watchedProcesses: Set<String> {
+        Set(availableProcesses).subtracting(disabledProcesses)
     }
     @Published private(set) var daemonStatus: DaemonStatus = .unknown
     @Published var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled {
@@ -123,23 +132,16 @@ final class AppCoordinator: ObservableObject {
         manualOverride = override
     }
 
-    /// Kernel comm names are truncated to 15 chars (plus NUL). Anything
-    /// longer would never match a real process.
-    static let maxProcessNameLength = 15
-
-    @discardableResult
-    func addWatchedProcess(_ raw: String) -> Bool {
-        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty,
-              name.count <= Self.maxProcessNameLength,
-              !watchedProcesses.contains(name)
-        else { return false }
-        watchedProcesses.insert(name)
-        return true
+    func isProcessEnabled(_ name: String) -> Bool {
+        !disabledProcesses.contains(name)
     }
 
-    func removeWatchedProcess(_ name: String) {
-        watchedProcesses.remove(name)
+    func setProcessEnabled(_ name: String, _ enabled: Bool) {
+        if enabled {
+            disabledProcesses.remove(name)
+        } else {
+            disabledProcesses.insert(name)
+        }
     }
 
     private func applyLaunchAtLogin(_ on: Bool) {

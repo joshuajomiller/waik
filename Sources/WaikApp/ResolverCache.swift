@@ -5,7 +5,6 @@ final class ResolverCache: @unchecked Sendable {
     static let defaultHostnames: [String] = [
         "api.anthropic.com",
         "api.openai.com",
-        "chatgpt.com",
         "generativelanguage.googleapis.com",
         // Cursor's gateway endpoints. The AWS-backed `api2` rotates across
         // an ELB pool so a single getaddrinfo() rarely covers the live IP,

@@ -15,7 +15,7 @@
   <img src="docs/hero.png" width="320" alt="waik menu bar popover"/>
 </p>
 
-`waik` is a tiny native menu bar app for macOS that watches the processes you actually care about — Claude Code, Codex, Cursor, Zed, ChatGPT — and holds a system sleep assertion **only while one of them is streaming traffic to a known AI host**. The moment the work stops, the assertion is released and your Mac is allowed to sleep again.
+`waik` is a tiny native menu bar app for macOS that watches the processes you actually care about — Claude Code, Codex, Cursor, Zed — and holds a system sleep assertion **only while one of them is streaming traffic to a known AI host**. The moment the work stops, the assertion is released and your Mac is allowed to sleep again.
 
 No timers to set. No "stay awake forever" pill to remember to swallow. Your laptop sleeps when *you* aren't working, and stays awake when your agent is.
 
@@ -125,9 +125,9 @@ The window decays naturally (default 45s) once activity stops. If the watched pr
 | Default watched processes | Default AI hosts (for display) |
 |---|---|
 | `claude`, `codex` | `api.anthropic.com`, `api.openai.com` |
-| `Claude`, `ChatGPT` | `chatgpt.com`, `generativelanguage.googleapis.com` |
-| `Cursor`, `Cursor Helper` | `api2.cursor.sh`, `api3.cursor.sh`, `api.cursor.sh` |
-| `zed`, `Code Helper` | `repo42.cursor.sh`, `cursor.sh` |
+| `Claude`, `Cursor` | `generativelanguage.googleapis.com` |
+| `Cursor Helper`, `zed` | `api2.cursor.sh`, `api3.cursor.sh`, `api.cursor.sh` |
+| `Code Helper` | `repo42.cursor.sh`, `cursor.sh` |
 
 > Process names are matched against the kernel-recorded `comm` name (truncated to 16 chars by Darwin — same as what `ps -o comm` shows). Keep custom entries ≤ 16 characters.
 

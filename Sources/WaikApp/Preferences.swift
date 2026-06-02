@@ -1,12 +1,13 @@
 import Foundation
 
 enum PreferenceKey {
-    static let watchedProcesses = "watchedProcesses"
+    static let disabledProcesses = "disabledProcesses"
     static let batteryGuardEnabled = "batteryGuardEnabled"
     static let batteryGuardThreshold = "batteryGuardThreshold"
     static let onboardingCompleted = "onboardingCompleted"
     // Legacy keys cleared on launch.
     static let legacyWindowSeconds = "windowSeconds"
+    static let legacyWatchedProcesses = "watchedProcesses"
 }
 
 enum Preferences {
@@ -20,25 +21,37 @@ enum Preferences {
         "zed",
         "Code Helper",
         "Claude",
-        "ChatGPT",
     ]
 
     static let windowSeconds: TimeInterval = 45
 
     static func clearLegacyKeys() {
         UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyWindowSeconds)
+        // Earlier versions let users edit the watchlist freely. We've since
+        // narrowed the model to "toggle each default on/off" — drop the
+        // legacy free-form list so old custom entries don't linger.
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyWatchedProcesses)
     }
 
-    static var watchedProcesses: Set<String> {
+    /// User-disabled subset of `defaultWatchedProcesses`. Storing the disabled
+    /// set (rather than the enabled set) means new defaults shipped in future
+    /// versions are auto-enabled for existing users.
+    static var disabledProcesses: Set<String> {
         get {
-            if let arr = UserDefaults.standard.stringArray(forKey: PreferenceKey.watchedProcesses) {
+            if let arr = UserDefaults.standard.stringArray(forKey: PreferenceKey.disabledProcesses) {
                 return Set(arr)
             }
-            return Set(defaultWatchedProcesses)
+            return []
         }
         set {
-            UserDefaults.standard.set(Array(newValue), forKey: PreferenceKey.watchedProcesses)
+            UserDefaults.standard.set(Array(newValue), forKey: PreferenceKey.disabledProcesses)
         }
+    }
+
+    /// The effective watchlist passed to `ActivityMonitor` — defaults minus
+    /// anything the user has explicitly disabled.
+    static var watchedProcesses: Set<String> {
+        Set(defaultWatchedProcesses).subtracting(disabledProcesses)
     }
 
     static let defaultBatteryGuardThreshold: Int = 20
