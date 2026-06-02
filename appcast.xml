@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>waik</title>
+        <description>Automatic updates for waik.</description>
+        <language>en</language>
+        <item>
+            <title>Version 0.4.4</title>
+            <pubDate>Tue, 02 Jun 2026 12:56:20 +0000</pubDate>
+            <sparkle:version>0.4.4</sparkle:version>
+            <sparkle:shortVersionString>0.4.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/joshuajomiller/waik/releases/download/v0.4.4/waik-v0.4.4.zip"
+                length="2796109"
+                type="application/octet-stream"
+                sparkle:edSignature="q7VYCnoJq3KFWyHnmtzHwAwk38JY/TV9oJw/Js9Oy+N5iHaNsYe109URkf3gck6nb9YQkqqrbCoi3MzSlpKbCQ==" />
+        </item>
+    </channel>
+</rss>
