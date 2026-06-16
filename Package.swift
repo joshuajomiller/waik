@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "waik", targets: ["WaikApp"]),
         .executable(name: "waik-helper", targets: ["WaikHelper"]),
+        .executable(name: "waik-hook", targets: ["WaikHook"]),
     ],
     dependencies: [
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
@@ -16,21 +17,10 @@ let package = Package(
             name: "WaikShared",
             path: "Sources/WaikShared"
         ),
-        .target(
-            name: "WaikCore",
-            path: "Sources/WaikCore"
-        ),
-        .target(
-            name: "CProcInfo",
-            path: "Sources/CProcInfo",
-            publicHeadersPath: "include"
-        ),
         .executableTarget(
             name: "WaikApp",
             dependencies: [
                 "WaikShared",
-                "WaikCore",
-                "CProcInfo",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/WaikApp",
@@ -39,6 +29,7 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("ServiceManagement"),
+                .linkedFramework("Network"),
             ]
         ),
         .executableTarget(
@@ -49,10 +40,9 @@ let package = Package(
                 .linkedFramework("IOKit"),
             ]
         ),
-        .testTarget(
-            name: "WaikCoreTests",
-            dependencies: ["WaikCore"],
-            path: "Tests/WaikCoreTests"
+        .executableTarget(
+            name: "WaikHook",
+            path: "Sources/waik-hook"
         ),
     ]
 )

@@ -5,7 +5,8 @@ struct OnboardingView: View {
     let finish: () -> Void
 
     @State private var page: Int = 0
-    private let pageCount: Int = 3
+    @State private var lastInstallError: String? = nil
+    private let pageCount: Int = 4
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,6 +15,7 @@ struct OnboardingView: View {
                     switch page {
                     case 0: introPage
                     case 1: daemonPage
+                    case 2: hooksPage
                     default: launchPage
                     }
                 }
@@ -54,7 +56,7 @@ struct OnboardingView: View {
             }
             .padding(16)
         }
-        .frame(width: 480, height: 380)
+        .frame(width: 480, height: 420)
     }
 
     private var pageDots: some View {
@@ -77,7 +79,7 @@ struct OnboardingView: View {
             Text("Welcome to waik")
                 .font(.largeTitle.weight(.semibold))
 
-            Text("waik watches your AI agent processes — Claude Code, Codex, Cursor, Zed — and holds your Mac awake while one of them is doing real work. The moment activity stops, your Mac sleeps again.")
+            Text("waik listens for hooks that Claude Code and Codex already fire when they start or finish a turn — and holds your Mac awake while one is mid-task. The moment a turn ends, your Mac sleeps again.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -116,6 +118,86 @@ struct OnboardingView: View {
             .font(.callout)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var hooksPage: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            heroIcon("antenna.radiowaves.left.and.right", gradient: [.teal, .blue])
+
+            Text("Install agent hooks")
+                .font(.largeTitle.weight(.semibold))
+
+            Text("waik adds entries to your `~/.claude/settings.json` and `~/.codex/config.toml` so each tool tells waik when it starts and finishes a turn. You can uninstall any time from the menu bar.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer()
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(coordinator.availableTools, id: \.self) { tool in
+                    hookStatusRow(tool)
+                }
+            }
+
+            if let err = lastInstallError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Spacer()
+                Button("Install all") {
+                    let errs = coordinator.installAllHooks()
+                    lastInstallError = errs.isEmpty ? nil : errs.map { "\($0.key): \($0.value.localizedDescription)" }.joined(separator: " · ")
+                }
+                .controlSize(.small)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func hookStatusRow(_ tool: String) -> some View {
+        let status = coordinator.hookStatus[tool] ?? .notInstalled
+        return HStack(spacing: 8) {
+            Image(systemName: hookIcon(status))
+                .foregroundStyle(hookColor(status))
+            Text(tool)
+                .font(.system(.callout, design: .monospaced))
+            Spacer()
+            Text(hookLabel(status))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func hookIcon(_ s: HookInstaller.ToolStatus) -> String {
+        switch s {
+        case .installed: return "checkmark.circle.fill"
+        case .notInstalled: return "circle"
+        case .mismatched: return "exclamationmark.triangle.fill"
+        case .unavailable: return "xmark.circle"
+        }
+    }
+
+    private func hookColor(_ s: HookInstaller.ToolStatus) -> Color {
+        switch s {
+        case .installed: return .green
+        case .notInstalled: return .secondary
+        case .mismatched: return .orange
+        case .unavailable: return Color.secondary.opacity(0.6)
+        }
+    }
+
+    private func hookLabel(_ s: HookInstaller.ToolStatus) -> String {
+        switch s {
+        case .installed: return "installed"
+        case .notInstalled: return "not installed"
+        case .mismatched(let m): return m
+        case .unavailable(let m): return m
+        }
     }
 
     private var launchPage: some View {

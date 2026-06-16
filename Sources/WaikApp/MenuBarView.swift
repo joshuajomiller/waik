@@ -5,7 +5,7 @@ struct MenuBarView: View {
     @EnvironmentObject var coordinator: AppCoordinator
     let updater: SPUUpdater
 
-    @State private var processesExpanded = false
+    @State private var toolsExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -29,7 +29,7 @@ struct MenuBarView: View {
 
             separator
 
-            processesSection
+            toolsSection
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
 
@@ -45,7 +45,7 @@ struct MenuBarView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
         }
-        .frame(width: 300)
+        .frame(width: 320)
     }
 
     private var separator: some View {
@@ -66,68 +66,25 @@ struct MenuBarView: View {
     }
 
     private func engagedHeader(_ engaged: AppCoordinator.EngagedDetail) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                StatusDot(
-                    color: coordinator.trafficActive ? .green : .accentColor,
-                    pulsing: coordinator.trafficActive
-                )
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Keep-awake engaged")
-                        .font(.system(.headline, design: .rounded))
-                    Text("\(engaged.processName) · pid \(engaged.pid)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
+        HStack(spacing: 10) {
+            StatusDot(color: .accentColor, pulsing: true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Keep-awake engaged")
+                    .font(.system(.headline, design: .rounded))
+                Text(engagedSubtitle(engaged))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-
-            TimelineView(.animation(minimumInterval: 0.5)) { context in
-                let remaining = engaged.remainingSeconds(at: context.date)
-                let fraction = engaged.windowSeconds > 0
-                    ? max(0.0, min(1.0, Double(remaining) / engaged.windowSeconds))
-                    : 0.0
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        if coordinator.trafficActive {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .foregroundStyle(.green)
-                            Text("Receiving")
-                                .foregroundStyle(.green)
-                        } else {
-                            Text("\(remaining)s")
-                                .foregroundStyle(.primary)
-                                .contentTransition(.numericText())
-                            Text("until release")
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .font(.caption.monospacedDigit())
-
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(.quaternary)
-                            Capsule()
-                                .fill(
-                                    LinearGradient(
-                                        colors: coordinator.trafficActive
-                                            ? [.green.opacity(0.9), .green]
-                                            : [.accentColor.opacity(0.8), .accentColor],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(width: max(0, geo.size.width * fraction))
-                                .animation(.easeOut(duration: 0.4), value: fraction)
-                        }
-                    }
-                    .frame(height: 5)
-                }
-            }
+            Spacer()
         }
+    }
+
+    private func engagedSubtitle(_ engaged: AppCoordinator.EngagedDetail) -> String {
+        let toolPart = engaged.tools.joined(separator: " · ")
+        if engaged.sessionCount == 1 {
+            return toolPart
+        }
+        return "\(toolPart) · \(engaged.sessionCount) sessions"
     }
 
     private var simpleHeader: some View {
@@ -242,20 +199,20 @@ struct MenuBarView: View {
         )
     }
 
-    // MARK: - Watched processes
+    // MARK: - Agent hooks
 
-    private var processesSection: some View {
+    private var toolsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HoverButton {
-                processesExpanded.toggle()
+                toolsExpanded.toggle()
             } content: {
                 HStack(spacing: 10) {
-                    Image(systemName: "eye")
+                    Image(systemName: "antenna.radiowaves.left.and.right")
                         .foregroundStyle(.secondary)
                         .frame(width: 16)
-                    Text("Watched processes")
+                    Text("Agent hooks")
                     Spacer()
-                    Text("\(coordinator.watchedProcesses.count)/\(coordinator.availableProcesses.count)")
+                    Text("\(installedCount)/\(coordinator.availableTools.count)")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
@@ -264,48 +221,92 @@ struct MenuBarView: View {
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(processesExpanded ? 90 : 0))
+                        .rotationEffect(.degrees(toolsExpanded ? 90 : 0))
                 }
             }
 
-            if processesExpanded {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(coordinator.availableProcesses.sorted(), id: \.self) { name in
-                        processRow(name)
+            if toolsExpanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(coordinator.availableTools, id: \.self) { tool in
+                        toolRow(tool)
                     }
                 }
-                .padding(.leading, 32)
+                .padding(.leading, 26)
                 .padding(.trailing, 12)
-                .padding(.vertical, 6)
+                .padding(.vertical, 8)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: processesExpanded)
+        .animation(.easeInOut(duration: 0.18), value: toolsExpanded)
     }
 
-    private func processRow(_ name: String) -> some View {
-        let enabled = coordinator.isProcessEnabled(name)
-        return Button {
-            coordinator.setProcessEnabled(name, !enabled)
-        } label: {
+    private var installedCount: Int {
+        coordinator.hookStatus.values.filter {
+            if case .installed = $0 { return true } else { return false }
+        }.count
+    }
+
+    private func toolRow(_ tool: String) -> some View {
+        let status = coordinator.hookStatus[tool] ?? .notInstalled
+        let enabled = coordinator.isToolEnabled(tool)
+        return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                Text(name)
+                Text(tool)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(.primary)
                     .opacity(enabled ? 1.0 : 0.45)
-                    .strikethrough(!enabled, color: Color.secondary.opacity(0.6))
                 Spacer()
+                statusBadge(status)
                 Toggle("", isOn: Binding(
                     get: { enabled },
-                    set: { coordinator.setProcessEnabled(name, $0) }
+                    set: { coordinator.setToolEnabled(tool, $0) }
                 ))
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)
             }
-            .contentShape(Rectangle())
+            actionRow(tool: tool, status: status)
         }
-        .buttonStyle(HoverRowStyle())
+    }
+
+    @ViewBuilder
+    private func actionRow(tool: String, status: HookInstaller.ToolStatus) -> some View {
+        HStack(spacing: 8) {
+            switch status {
+            case .installed:
+                Button("Uninstall") { _ = coordinator.uninstallHooks(tool: tool) }
+                    .buttonStyle(.link).controlSize(.mini)
+            case .notInstalled, .mismatched:
+                Button("Install") { _ = coordinator.installHooks(tool: tool) }
+                    .buttonStyle(.link).controlSize(.mini)
+                if case .mismatched(let msg) = status {
+                    Text(msg)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            case .unavailable(let msg):
+                Text(msg)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
+        }
+    }
+
+    private func statusBadge(_ status: HookInstaller.ToolStatus) -> some View {
+        let (label, tint): (String, Color)
+        switch status {
+        case .installed: (label, tint) = ("installed", .green)
+        case .notInstalled: (label, tint) = ("not installed", .secondary)
+        case .mismatched: (label, tint) = ("partial", .orange)
+        case .unavailable: (label, tint) = ("n/a", Color.secondary.opacity(0.6))
+        }
+        return Text(label)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(tint.opacity(0.12), in: Capsule())
     }
 
     // MARK: - Quit

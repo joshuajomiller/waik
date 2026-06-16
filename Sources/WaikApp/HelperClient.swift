@@ -60,6 +60,20 @@ final class HelperClient {
         }
     }
 
+    /// Blocking variant for use on the app-termination path, where an async
+    /// message would be dropped when the process exits before XPC delivers it.
+    /// The synchronous proxy runs the reply inline, so we don't return (and let
+    /// the app finish quitting) until the helper has actually applied the change.
+    func setSleepDisabledAndWait(_ disabled: Bool) {
+        let conn = connectionOrReconnect()
+        let proxy = conn.synchronousRemoteObjectProxyWithErrorHandler { [logger] error in
+            logger.error("XPC error (sync): \(error.localizedDescription, privacy: .public)")
+        } as? WaikHelperProtocol
+        proxy?.setSleepDisabled(disabled) { [logger] result in
+            logger.info("setSleepDisabled(\(disabled, privacy: .public)) [sync] returned \(result, privacy: .public)")
+        }
+    }
+
     private func connectionOrReconnect() -> NSXPCConnection {
         if let c = connection { return c }
         let c = NSXPCConnection(

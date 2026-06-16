@@ -23,8 +23,7 @@ struct WaikApp: App {
                 .environmentObject(coordinator)
         } label: {
             Image(nsImage: MenuBarIconImage.render(
-                baseSymbol: coordinator.iconSymbolName,
-                trafficActive: coordinator.trafficActive
+                baseSymbol: coordinator.iconSymbolName
             ))
         }
         .menuBarExtraStyle(.window)
