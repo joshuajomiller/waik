@@ -1,56 +1,44 @@
 import Foundation
 
 enum PreferenceKey {
-    static let disabledProcesses = "disabledProcesses"
+    static let disabledTools = "disabledTools"
     static let batteryGuardEnabled = "batteryGuardEnabled"
     static let batteryGuardThreshold = "batteryGuardThreshold"
     static let onboardingCompleted = "onboardingCompleted"
     // Legacy keys cleared on launch.
     static let legacyWindowSeconds = "windowSeconds"
     static let legacyWatchedProcesses = "watchedProcesses"
+    static let legacyDisabledProcesses = "disabledProcesses"
 }
 
 enum Preferences {
-    // Names here are matched against the kernel-recorded comm name (truncated
-    // to 16 chars), which is what `ps -o comm` shows. Keep them ≤16 chars.
-    static let defaultWatchedProcesses: [String] = [
+    /// Tools waik knows how to listen to via their hook/notify mechanism.
+    /// Each name is the key used in HookServer event payloads and in the
+    /// hook installer's per-tool routines.
+    static let supportedTools: [String] = [
         "claude",
         "codex",
-        "Cursor",
-        "Cursor Helper",
-        "zed",
-        "Code Helper",
     ]
-
-    static let windowSeconds: TimeInterval = 45
 
     static func clearLegacyKeys() {
         UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyWindowSeconds)
-        // Earlier versions let users edit the watchlist freely. We've since
-        // narrowed the model to "toggle each default on/off" — drop the
-        // legacy free-form list so old custom entries don't linger.
         UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyWatchedProcesses)
+        UserDefaults.standard.removeObject(forKey: PreferenceKey.legacyDisabledProcesses)
     }
 
-    /// User-disabled subset of `defaultWatchedProcesses`. Storing the disabled
-    /// set (rather than the enabled set) means new defaults shipped in future
-    /// versions are auto-enabled for existing users.
-    static var disabledProcesses: Set<String> {
+    /// User-disabled subset of `supportedTools`. Storing the disabled set
+    /// (rather than the enabled set) means tools added in future versions
+    /// auto-enable for existing users.
+    static var disabledTools: Set<String> {
         get {
-            if let arr = UserDefaults.standard.stringArray(forKey: PreferenceKey.disabledProcesses) {
+            if let arr = UserDefaults.standard.stringArray(forKey: PreferenceKey.disabledTools) {
                 return Set(arr)
             }
             return []
         }
         set {
-            UserDefaults.standard.set(Array(newValue), forKey: PreferenceKey.disabledProcesses)
+            UserDefaults.standard.set(Array(newValue), forKey: PreferenceKey.disabledTools)
         }
-    }
-
-    /// The effective watchlist passed to `ActivityMonitor` — defaults minus
-    /// anything the user has explicitly disabled.
-    static var watchedProcesses: Set<String> {
-        Set(defaultWatchedProcesses).subtracting(disabledProcesses)
     }
 
     static let defaultBatteryGuardThreshold: Int = 20

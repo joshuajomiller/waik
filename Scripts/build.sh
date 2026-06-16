@@ -27,6 +27,7 @@ Scripts/generate-icon.swift "$ROOT"
 echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG" --product waik
 swift build -c "$CONFIG" --product waik-helper
+swift build -c "$CONFIG" --product waik-hook
 
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 
@@ -38,6 +39,7 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 cp "$BIN_DIR/waik"        "$APP_BUNDLE/Contents/MacOS/waik"
 cp "$BIN_DIR/waik-helper" "$APP_BUNDLE/Contents/MacOS/waik-helper"
+cp "$BIN_DIR/waik-hook"   "$APP_BUNDLE/Contents/MacOS/waik-hook"
 
 cp Resources/Info.plist               "$APP_BUNDLE/Contents/Info.plist"
 cp Resources/com.waik.helper.plist    "$APP_BUNDLE/Contents/Library/LaunchDaemons/com.waik.helper.plist"
@@ -109,6 +111,13 @@ codesign --force --options runtime --timestamp=none \
     --sign "$SIGN_ID" \
     --entitlements Resources/waik.helper.entitlements \
     "$APP_BUNDLE/Contents/MacOS/waik-helper"
+
+# waik-hook is a tiny CLI invoked from external agent hooks. Same entitlements
+# as the host (sandbox off) so it can reach the localhost listener.
+codesign --force --options runtime --timestamp=none \
+    --sign "$SIGN_ID" \
+    --entitlements Resources/waik.entitlements \
+    "$APP_BUNDLE/Contents/MacOS/waik-hook"
 
 codesign --force --options runtime --timestamp=none \
     --sign "$SIGN_ID" \

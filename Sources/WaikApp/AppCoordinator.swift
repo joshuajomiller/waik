@@ -21,27 +21,22 @@ final class AppCoordinator: ObservableObject {
     private let logger = Logger(subsystem: "com.waik.app", category: "coordinator")
 
     @Published private(set) var state: KeepAwakeState = .idle
-    @Published private(set) var detection: DetectionInfo? = nil
-    @Published private(set) var trafficActive: Bool = false
+    @Published private(set) var sessions: [String: HookServer.Session] = [:]
     @Published var manualOverride: ManualOverride = .none {
         didSet { reconcile() }
     }
-    let windowSeconds: TimeInterval = Preferences.windowSeconds
-    /// The canonical list of processes the app knows how to watch. The user
-    /// can toggle each one on/off — adding ad-hoc names is intentionally
-    /// not exposed; the default list is curated to match the AI tools that
-    /// ship with a kernel-comm name we can reliably detect.
-    let availableProcesses: [String] = Preferences.defaultWatchedProcesses
-    @Published var disabledProcesses: Set<String> = Preferences.disabledProcesses {
-        didSet {
-            Preferences.disabledProcesses = disabledProcesses
-            monitor.watchedProcesses = watchedProcesses
-        }
+
+    /// Tools waik knows how to install hooks for. The user can disable a
+    /// tool here without uninstalling its hooks; events for disabled tools
+    /// are ignored when computing engagement.
+    let availableTools: [String] = Preferences.supportedTools
+    @Published var disabledTools: Set<String> = Preferences.disabledTools {
+        didSet { Preferences.disabledTools = disabledTools }
     }
-    /// The effective set passed to `ActivityMonitor` each tick.
-    var watchedProcesses: Set<String> {
-        Set(availableProcesses).subtracting(disabledProcesses)
+    var enabledTools: Set<String> {
+        Set(availableTools).subtracting(disabledTools)
     }
+
     @Published private(set) var daemonStatus: DaemonStatus = .unknown
     @Published var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled {
         didSet {
@@ -63,7 +58,10 @@ final class AppCoordinator: ObservableObject {
     }
     @Published private(set) var batteryState: BatteryReader.State? = BatteryReader.current()
 
-    private let monitor = ActivityMonitor()
+    @Published private(set) var hookStatus: [String: HookInstaller.ToolStatus] = [:]
+
+    let hookServer = HookServer()
+    let hookInstaller = HookInstaller()
     private let helperClient = HelperClient()
     private let assertion = PowerAssertion()
     private var cancellables = Set<AnyCancellable>()
@@ -72,33 +70,54 @@ final class AppCoordinator: ObservableObject {
 
     init() {
         Preferences.clearLegacyKeys()
-        monitor.watchedProcesses = watchedProcesses
+        // Refresh the stable `waik-hook` launcher copy from this bundle. Hook
+        // entries (and the Codex chain wrapper) point at the stable path
+        // rather than the bundle, so moving or rebuilding the .app silently
+        // re-points itself on the next launch without requiring a re-install.
+        HookLauncher.refreshFromBundle()
 
-        monitor.$lastDetection
+        hookServer.$sessions
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] info in
-                guard let self else { return }
-                self.detection = info
-                self.reconcile()
-            }
-            .store(in: &cancellables)
-
-        monitor.$trafficActive
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] active in
-                self?.trafficActive = active
+            .sink { [weak self] s in
+                self?.sessions = s
+                self?.reconcile()
             }
             .store(in: &cancellables)
 
         daemonStatus = helperClient.register()
-        monitor.start()
+        // We launch in `.idle`, and `apply()` only runs on state *transitions*,
+        // so without this an instance that inherited a stale `SleepDisabled=1`
+        // lease (e.g. a prior instance was force-quit while engaged) would never
+        // clear it and the Mac couldn't sleep on lid-close. Push the idle state
+        // explicitly to reconcile the helper with reality on every launch.
+        helperClient.setSleepDisabled(false)
+        hookServer.start()
+        refreshHookStatus()
         startReconcileTimer()
 
-        // Periodically refresh status so the UI reflects user approval changes.
+        // Periodically refresh daemon + hook installer status so the UI
+        // reflects user approval changes and manual edits.
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.daemonStatus = self.helperClient.status()
+                self.refreshHookStatus()
+            }
+        }
+
+        // Release the sleep lease on any clean termination (logout, shutdown,
+        // or a quit that didn't route through `quit()`). The helper is an
+        // on-demand daemon that persists `SleepDisabled` across its own reaping,
+        // so if we don't actively clear it on the way out a stale `1` survives
+        // and the Mac can't sleep on lid-close until the next launch reconciles.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.hookServer.stop()
+                self?.helperClient.setSleepDisabledAndWait(false)
             }
         }
 
@@ -132,16 +151,48 @@ final class AppCoordinator: ObservableObject {
         manualOverride = override
     }
 
-    func isProcessEnabled(_ name: String) -> Bool {
-        !disabledProcesses.contains(name)
+    func isToolEnabled(_ name: String) -> Bool {
+        !disabledTools.contains(name)
     }
 
-    func setProcessEnabled(_ name: String, _ enabled: Bool) {
+    func setToolEnabled(_ name: String, _ enabled: Bool) {
         if enabled {
-            disabledProcesses.remove(name)
+            disabledTools.remove(name)
         } else {
-            disabledProcesses.insert(name)
+            disabledTools.insert(name)
         }
+        reconcile()
+    }
+
+    func refreshHookStatus() {
+        var next: [String: HookInstaller.ToolStatus] = [:]
+        for tool in availableTools {
+            next[tool] = hookInstaller.status(tool: tool)
+        }
+        if hookStatus != next { hookStatus = next }
+    }
+
+    func installHooks(tool: String) -> Result<Void, Error> {
+        let r = hookInstaller.install(tool: tool)
+        refreshHookStatus()
+        return r
+    }
+
+    func uninstallHooks(tool: String) -> Result<Void, Error> {
+        let r = hookInstaller.uninstall(tool: tool)
+        refreshHookStatus()
+        return r
+    }
+
+    func installAllHooks() -> [String: Error] {
+        var errs: [String: Error] = [:]
+        for tool in availableTools {
+            if case .failure(let e) = hookInstaller.install(tool: tool) {
+                errs[tool] = e
+            }
+        }
+        refreshHookStatus()
+        return errs
     }
 
     private func applyLaunchAtLogin(_ on: Bool) {
@@ -166,6 +217,7 @@ final class AppCoordinator: ObservableObject {
 
     func quit() {
         apply(.idle)
+        hookServer.stop()
         NSApp.terminate(nil)
     }
 
@@ -186,28 +238,23 @@ final class AppCoordinator: ObservableObject {
         }
     }
 
-    struct EngagedDetail {
-        let processName: String
-        let pid: Int32
-        let lastActivityAt: Date
-        let windowSeconds: TimeInterval
-
-        func remainingSeconds(at now: Date) -> Int {
-            max(0, Int(windowSeconds - now.timeIntervalSince(lastActivityAt)))
-        }
+    struct EngagedDetail: Equatable {
+        let tools: [String]      // distinct tool names with active sessions
+        let sessionCount: Int
     }
 
-    /// When non-nil, the menu should render a live countdown rather than a
-    /// static `statusText`.
+    /// Non-nil while running on hook signals (no manual override, no battery
+    /// guard, no pause). The menu renders this as a session summary.
     var engagedDetail: EngagedDetail? {
         guard manualOverride == .none, state == .engaged else { return nil }
-        guard let det = detection, let last = monitor.lastActivityAt else { return nil }
-        return EngagedDetail(
-            processName: det.processName,
-            pid: det.pid,
-            lastActivityAt: last,
-            windowSeconds: windowSeconds
-        )
+        let active = activeSessions
+        guard !active.isEmpty else { return nil }
+        let tools = Array(Set(active.map { $0.tool })).sorted()
+        return EngagedDetail(tools: tools, sessionCount: active.count)
+    }
+
+    private var activeSessions: [HookServer.Session] {
+        sessions.values.filter { enabledTools.contains($0.tool) }
     }
 
     var statusText: String {
@@ -240,6 +287,8 @@ final class AppCoordinator: ObservableObject {
     }
 
     private func startReconcileTimer() {
+        // Battery state + manual overrides still need a periodic recheck even
+        // when no hook events fire, so the reconcile timer stays.
         let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.reconcile()
@@ -250,7 +299,6 @@ final class AppCoordinator: ObservableObject {
     }
 
     private func reconcile() {
-        let now = Date()
         if let refreshed = BatteryReader.current(), refreshed != batteryState {
             batteryState = refreshed
         }
@@ -264,10 +312,8 @@ final class AppCoordinator: ObservableObject {
         case .none:
             if isBatteryGuardActive {
                 active = false
-            } else if let last = monitor.lastActivityAt {
-                active = now.timeIntervalSince(last) < windowSeconds
             } else {
-                active = false
+                active = !activeSessions.isEmpty
             }
         }
 
