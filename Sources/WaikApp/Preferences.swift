@@ -18,6 +18,7 @@ enum Preferences {
     static let supportedTools: [String] = [
         "claude",
         "codex",
+        "cursor",
     ]
 
     static func clearLegacyKeys() {

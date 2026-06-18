@@ -1,4 +1,5 @@
-// waik-hook: tiny CLI invoked from Claude Code hooks and Codex notify.
+// waik-hook: tiny CLI invoked from Claude Code hooks, Codex notify, and
+// Cursor hooks.
 //
 // Usage:
 //   waik-hook claude turn_start
@@ -7,6 +8,8 @@
 //   waik-hook claude subagent_end
 //   waik-hook codex turn_end
 //   waik-hook codex waiting_for_input
+//   waik-hook cursor turn_start
+//   waik-hook cursor turn_end
 //
 // Reads ~/Library/Application Support/waik/control.port for the running app's
 // port + token, then POSTs the event to http://127.0.0.1:<port>/event. If the
@@ -50,9 +53,13 @@ let sessionId =
     (bodyJSON["session_id"] as? String)
     ?? (bodyJSON["turn-id"] as? String)
     ?? (bodyJSON["turn_id"] as? String)
+    ?? (bodyJSON["conversation_id"] as? String)
     ?? "unknown"
 
-let cwd = (bodyJSON["cwd"] as? String) ?? FileManager.default.currentDirectoryPath
+let cwd =
+    (bodyJSON["cwd"] as? String)
+    ?? (bodyJSON["workspace_roots"] as? [String])?.first
+    ?? FileManager.default.currentDirectoryPath
 
 let payload: [String: Any] = [
     "tool": tool,
