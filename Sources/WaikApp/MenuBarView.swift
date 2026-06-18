@@ -21,8 +21,17 @@ struct MenuBarView: View {
 
             footerCard
         }
-        .padding(10)
+        // Horizontal padding only — on macOS 26 (Tahoe) MenuBarExtra's
+        // `.window` style adds its own generous vertical breathing room
+        // around the content, which combined with explicit vertical padding
+        // produced large empty bands above the status card and below the
+        // footer.
+        .padding(.horizontal, 10)
         .frame(width: 320)
+        // Force the popover to size to the content's intrinsic height
+        // instead of expanding to whatever default min-height the system
+        // popover wants to apply.
+        .fixedSize(horizontal: false, vertical: true)
         .animation(.easeInOut(duration: 0.18), value: toolsExpanded)
     }
 
@@ -226,10 +235,18 @@ struct MenuBarView: View {
                     .padding(.trailing, 14)
                     .padding(.top, 4)
                     .padding(.bottom, 6)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    // Plain fade — `.move(edge: .top)` slid the expanded
+                    // section in from above its final position, briefly
+                    // overlapping the "Agent hooks" header row before the
+                    // parent card grew to fit. Letting the implicit height
+                    // animation drive the reveal avoids the overlap.
+                    .transition(.opacity)
                 }
             }
             .padding(6)
+            // Keep the expanding content inside the card's rounded shape so
+            // any partial-height transient is clipped instead of bleeding.
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
