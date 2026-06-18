@@ -4,10 +4,10 @@ This doc covers the maintainer pipeline: cutting a release, enabling Developer I
 
 ## Cutting a release
 
-Tag a version and push:
+Bump the version in `Sources/WaikShared/Constants.swift` and `Resources/Info.plist`, commit, then tag and push:
 
 ```bash
-git tag v0.4.0 && git push --tags
+git tag v0.5.0 && git push --tags
 ```
 
 The `Release` workflow builds, signs, packages, and publishes a GitHub Release with the `.app.zip` + sha256 attached. Signing mode is chosen automatically from the secrets you've set:
