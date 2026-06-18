@@ -105,6 +105,7 @@ final class HookInstaller {
         switch tool {
         case "claude": return claudeStatus()
         case "codex": return codexStatus()
+        case "cursor": return cursorStatus()
         default: return .unavailable("unknown tool")
         }
     }
@@ -114,6 +115,7 @@ final class HookInstaller {
         switch tool {
         case "claude": return claudeInstall()
         case "codex": return codexInstall()
+        case "cursor": return cursorInstall()
         default: return .failure(HookInstallerError.unsupportedTool(tool))
         }
     }
@@ -123,6 +125,7 @@ final class HookInstaller {
         switch tool {
         case "claude": return claudeUninstall()
         case "codex": return codexUninstall()
+        case "cursor": return cursorUninstall()
         default: return .failure(HookInstallerError.unsupportedTool(tool))
         }
     }
@@ -240,6 +243,132 @@ final class HookInstaller {
     private static func isWaikClaudeEntry(_ entry: Any) -> Bool {
         guard let dict = entry as? [String: Any] else { return false }
         return (dict["_waik"] as? Bool) == true
+    }
+
+    // MARK: - Cursor
+
+    // Cursor 1.7+ ships a `~/.cursor/hooks.json` lifecycle-hook surface that
+    // covers both the IDE and the Cursor CLI. waik only needs the two events
+    // that bracket a turn:
+    //   beforeSubmitPrompt — fires after the user hits send, before the
+    //                        backend request → turn_start
+    //   stop               — fires when the agent loop ends → turn_end
+    // There is no equivalent of Claude's `Notification` event for "waiting on
+    // the user," so we don't try to emit `waiting_for_input` for Cursor; the
+    // assertion simply drops when `stop` fires.
+    private static let cursorEvents: [(eventKey: String, waikEvent: String)] = [
+        ("beforeSubmitPrompt", "turn_start"),
+        ("stop", "turn_end"),
+    ]
+
+    private static var cursorHooksURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cursor", isDirectory: true)
+            .appendingPathComponent("hooks.json", isDirectory: false)
+    }
+
+    private func cursorStatus() -> ToolStatus {
+        let url = Self.cursorHooksURL
+        guard let data = try? Data(contentsOf: url) else {
+            return .notInstalled
+        }
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let hooks = root["hooks"] as? [String: Any]
+        else {
+            return .notInstalled
+        }
+        var present = 0
+        for (event, _) in Self.cursorEvents {
+            if let arr = hooks[event] as? [Any], arr.contains(where: { Self.isWaikCursorEntry($0) }) {
+                present += 1
+            }
+        }
+        if present == Self.cursorEvents.count { return .installed }
+        if present == 0 { return .notInstalled }
+        return .mismatched("\(present)/\(Self.cursorEvents.count) hook(s) installed")
+    }
+
+    private func cursorInstall() -> Result<Void, Error> {
+        guard let bin = Self.waikHookBinaryPath() else {
+            return .failure(HookInstallerError.binaryNotFound)
+        }
+        let url = Self.cursorHooksURL
+        let parentDir = url.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            var root: [String: Any] = ["version": 1]
+            if let data = try? Data(contentsOf: url),
+               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                root = parsed
+                if root["version"] == nil { root["version"] = 1 }
+            }
+            var hooks = (root["hooks"] as? [String: Any]) ?? [:]
+            for (event, waikEvent) in Self.cursorEvents {
+                var entries = (hooks[event] as? [Any]) ?? []
+                entries.removeAll { Self.isWaikCursorEntry($0) }
+                let entry: [String: Any] = [
+                    "_waik": true,
+                    "type": "command",
+                    "command": "\"\(bin)\" cursor \(waikEvent)",
+                ]
+                entries.append(entry)
+                hooks[event] = entries
+            }
+            root["hooks"] = hooks
+            try Self.atomicWriteJSON(root, to: url)
+            logger.info("Cursor hooks installed")
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func cursorUninstall() -> Result<Void, Error> {
+        let url = Self.cursorHooksURL
+        guard
+            let data = try? Data(contentsOf: url),
+            var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return .success(())
+        }
+        guard var hooks = root["hooks"] as? [String: Any] else {
+            return .success(())
+        }
+        for (event, _) in Self.cursorEvents {
+            guard var entries = hooks[event] as? [Any] else { continue }
+            entries.removeAll { Self.isWaikCursorEntry($0) }
+            if entries.isEmpty {
+                hooks.removeValue(forKey: event)
+            } else {
+                hooks[event] = entries
+            }
+        }
+        if hooks.isEmpty {
+            root.removeValue(forKey: "hooks")
+        } else {
+            root["hooks"] = hooks
+        }
+        do {
+            try Self.atomicWriteJSON(root, to: url)
+            logger.info("Cursor hooks removed")
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// Identify entries waik owns. Primary marker is `_waik: true`; we also
+    /// match by command prefix as a fallback in case a future Cursor version
+    /// strips unknown JSON fields.
+    private static func isWaikCursorEntry(_ entry: Any) -> Bool {
+        guard let dict = entry as? [String: Any] else { return false }
+        if (dict["_waik"] as? Bool) == true { return true }
+        if let cmd = dict["command"] as? String {
+            let needle = "\"\(HookLauncher.stableURL.path)\" cursor "
+            if cmd.hasPrefix(needle) { return true }
+        }
+        return false
     }
 
     // MARK: - Codex CLI

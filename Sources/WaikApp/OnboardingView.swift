@@ -79,7 +79,7 @@ struct OnboardingView: View {
             Text("Welcome to waik")
                 .font(.largeTitle.weight(.semibold))
 
-            Text("waik listens for hooks that Claude Code and Codex already fire when they start or finish a turn — and holds your Mac awake while one is mid-task. The moment a turn ends, your Mac sleeps again.")
+            Text("waik listens for hooks that Claude Code, Codex, and Cursor already fire when they start or finish a turn — and holds your Mac awake while one is mid-task. The moment a turn ends, your Mac sleeps again.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -127,7 +127,7 @@ struct OnboardingView: View {
             Text("Install agent hooks")
                 .font(.largeTitle.weight(.semibold))
 
-            Text("waik adds entries to your `~/.claude/settings.json` and `~/.codex/config.toml` so each tool tells waik when it starts and finishes a turn. You can uninstall any time from the menu bar.")
+            Text("waik adds entries to your `~/.claude/settings.json`, `~/.codex/config.toml`, and `~/.cursor/hooks.json` so each tool tells waik when it starts and finishes a turn. You can uninstall any time from the menu bar.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
