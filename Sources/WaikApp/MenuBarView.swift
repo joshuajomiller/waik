@@ -8,60 +8,37 @@ struct MenuBarView: View {
     @State private var toolsExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            statusSection
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 14)
+        VStack(spacing: 8) {
+            statusCard
 
             if let warn = coordinator.daemonStatusText {
-                separator
-                daemonWarning(warn)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                warningCard(warn)
             }
 
-            separator
+            controlsCard
 
-            controlsSection
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+            toolsCard
 
-            separator
-
-            toolsSection
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-
-            separator
-
-            CheckForUpdatesRow(updater: updater)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-
-            separator
-
-            quitButton
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+            footerCard
         }
+        .padding(10)
         .frame(width: 320)
+        .animation(.easeInOut(duration: 0.18), value: toolsExpanded)
     }
 
-    private var separator: some View {
-        Rectangle()
-            .fill(.quaternary)
-            .frame(height: 0.5)
-    }
+    // MARK: - Status
 
-    // MARK: - Status header
-
-    @ViewBuilder
-    private var statusSection: some View {
-        if let engaged = coordinator.engagedDetail {
-            engagedHeader(engaged)
-        } else {
-            simpleHeader
+    private var statusCard: some View {
+        GlassCard(tint: coordinator.engagedDetail != nil ? .accentColor : nil) {
+            Group {
+                if let engaged = coordinator.engagedDetail {
+                    engagedHeader(engaged)
+                } else {
+                    simpleHeader
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
     }
 
@@ -104,55 +81,64 @@ struct MenuBarView: View {
         }
     }
 
-    private func daemonWarning(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text(text)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
+    // MARK: - Daemon warning
+
+    private func warningCard(_ text: String) -> some View {
+        GlassCard(tint: .orange) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(text)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                }
+                Button("Open Login Items…") {
+                    coordinator.openLoginItemsSettings()
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+                .padding(.leading, 22)
             }
-            Button("Open Login Items…") {
-                coordinator.openLoginItemsSettings()
-            }
-            .buttonStyle(.link)
-            .font(.caption)
-            .padding(.leading, 22)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
     }
 
     // MARK: - Controls
 
-    private var controlsSection: some View {
-        VStack(spacing: 2) {
-            ToggleRow(
-                label: "Force keep awake",
-                systemImage: "bolt.fill",
-                tint: .orange,
-                isOn: forceAwakeBinding
-            )
-            ToggleRow(
-                label: "Pause monitoring",
-                systemImage: "pause.fill",
-                tint: .secondary,
-                isOn: pauseBinding
-            )
-            ToggleRow(
-                label: "Launch at login",
-                systemImage: "arrow.up.forward.app.fill",
-                tint: .accentColor,
-                isOn: $coordinator.launchAtLogin
-            )
-            ToggleRow(
-                label: "Sleep on low battery",
-                systemImage: "battery.25",
-                tint: .green,
-                isOn: $coordinator.batteryGuardEnabled
-            )
-            if coordinator.batteryGuardEnabled {
-                batteryThresholdRow
+    private var controlsCard: some View {
+        GlassCard {
+            VStack(spacing: 2) {
+                ToggleRow(
+                    label: "Force keep awake",
+                    systemImage: "bolt.fill",
+                    tint: .orange,
+                    isOn: forceAwakeBinding
+                )
+                ToggleRow(
+                    label: "Pause monitoring",
+                    systemImage: "pause.fill",
+                    tint: .secondary,
+                    isOn: pauseBinding
+                )
+                ToggleRow(
+                    label: "Launch at login",
+                    systemImage: "arrow.up.forward.app.fill",
+                    tint: .accentColor,
+                    isOn: $coordinator.launchAtLogin
+                )
+                ToggleRow(
+                    label: "Sleep on low battery",
+                    systemImage: "battery.25",
+                    tint: .green,
+                    isOn: $coordinator.batteryGuardEnabled
+                )
+                if coordinator.batteryGuardEnabled {
+                    batteryThresholdRow
+                }
             }
+            .padding(6)
         }
     }
 
@@ -201,43 +187,50 @@ struct MenuBarView: View {
 
     // MARK: - Agent hooks
 
-    private var toolsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HoverButton {
-                toolsExpanded.toggle()
-            } content: {
-                HStack(spacing: 10) {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16)
-                    Text("Agent hooks")
-                    Spacer()
-                    Text("\(installedCount)/\(coordinator.availableTools.count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(.quaternary, in: Capsule())
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(toolsExpanded ? 90 : 0))
-                }
-            }
-
-            if toolsExpanded {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(coordinator.availableTools, id: \.self) { tool in
-                        toolRow(tool)
+    private var toolsCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 0) {
+                HoverButton {
+                    toolsExpanded.toggle()
+                } content: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16)
+                        Text("Agent hooks")
+                        Spacer()
+                        Text("\(installedCount)/\(coordinator.availableTools.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                            )
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(toolsExpanded ? 90 : 0))
                     }
                 }
-                .padding(.leading, 26)
-                .padding(.trailing, 12)
-                .padding(.vertical, 8)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+
+                if toolsExpanded {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(coordinator.availableTools, id: \.self) { tool in
+                            toolRow(tool)
+                        }
+                    }
+                    .padding(.leading, 30)
+                    .padding(.trailing, 14)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
+            .padding(6)
         }
-        .animation(.easeInOut(duration: 0.18), value: toolsExpanded)
     }
 
     private var installedCount: Int {
@@ -304,12 +297,26 @@ struct MenuBarView: View {
         return Text(label)
             .font(.caption2.weight(.medium))
             .foregroundStyle(tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
             .background(tint.opacity(0.12), in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(tint.opacity(0.18), lineWidth: 0.5)
+            )
     }
 
-    // MARK: - Quit
+    // MARK: - Footer (updates + quit)
+
+    private var footerCard: some View {
+        GlassCard {
+            VStack(spacing: 2) {
+                CheckForUpdatesRow(updater: updater)
+                quitButton
+            }
+            .padding(6)
+        }
+    }
 
     private var quitButton: some View {
         HoverButton {
@@ -327,6 +334,40 @@ struct MenuBarView: View {
             }
         }
         .keyboardShortcut("q")
+    }
+}
+
+// MARK: - Glass card container
+
+private struct GlassCard<Content: View>: View {
+    var tint: Color? = nil
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .background(cardBackground)
+    }
+
+    private var cardBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return ZStack {
+            shape.fill(.ultraThinMaterial)
+            if let tint {
+                shape.fill(tint.opacity(0.10))
+            }
+            shape
+                .inset(by: 0.5)
+                .stroke(
+                    LinearGradient(
+                        colors: [.white.opacity(0.18), .white.opacity(0.04)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        }
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
     }
 }
 
@@ -416,9 +457,9 @@ private struct HoverRowStyle: ButtonStyle {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(hovering || configuration.isPressed
-                          ? Color.primary.opacity(configuration.isPressed ? 0.12 : 0.07)
+                          ? Color.primary.opacity(configuration.isPressed ? 0.10 : 0.06)
                           : Color.clear)
             )
             .contentShape(Rectangle())
