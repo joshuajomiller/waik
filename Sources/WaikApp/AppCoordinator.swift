@@ -218,6 +218,13 @@ final class AppCoordinator: ObservableObject {
     func quit() {
         apply(.idle)
         hookServer.stop()
+        // Drain the SleepDisabled clear before AppKit's terminate sequence
+        // begins. The willTerminate observer also calls this — keeping it as a
+        // safety net for non-user quit paths (logout, shutdown, Sparkle's
+        // AppleEvent) — but doing it here means the user-driven Quit doesn't
+        // depend on willTerminate firing in a context that lets the XPC reply
+        // come back.
+        helperClient.setSleepDisabledAndWait(false)
         NSApp.terminate(nil)
     }
 
