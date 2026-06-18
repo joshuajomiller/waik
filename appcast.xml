@@ -76,5 +76,17 @@
                 type="application/octet-stream"
                 sparkle:edSignature="tA+I9ba1IQzRp7f62mDmaQ7N5CoixoFbywoCwSi+6dFHpFc2DeavTjzTWNg/WYz8l1Lona6oD6Xz+lvyYJ63BQ==" />
         </item>
+        <item>
+            <title>Version 0.5.3</title>
+            <pubDate>Thu, 18 Jun 2026 15:23:18 +0000</pubDate>
+            <sparkle:version>1781796151</sparkle:version>
+            <sparkle:shortVersionString>0.5.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/joshuajomiller/waik/releases/download/v0.5.3/waik-v0.5.3.zip"
+                length="2852069"
+                type="application/octet-stream"
+                sparkle:edSignature="N0z4Xoy5HCdHCjkodDN4T9rLlivhsbSux1gzTO2Ewrfyc+1RAj6RGJ+NmsWDH2PEx73dB6tmkTT+y1g+/1HPDw==" />
+        </item>
     </channel>
 </rss>
