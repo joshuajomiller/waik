@@ -2,7 +2,7 @@
 
 # waik
 
-**Keep your Mac awake while your coding agent is working — and only then.**
+**Close the lid. Claude keeps working.**
 
 [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey)](https://www.apple.com/macos/)
 [![Swift](https://img.shields.io/badge/swift-5.9-orange?logo=swift)](https://swift.org)
@@ -15,30 +15,48 @@
   <img src="docs/hero.png" width="320" alt="waik menu bar popover"/>
 </p>
 
-`waik` is a tiny native menu bar app for macOS that watches the processes you actually care about — Claude Code, Codex, Cursor, Zed — and holds a system sleep assertion **only while one of them is streaming traffic to a known AI host**. The moment the work stops, the assertion is released and your Mac is allowed to sleep again.
+`waik` is a tiny macOS menu bar app that keeps your Mac awake — including with the lid closed — *only* while Claude Code or Codex is mid-turn. You start a long task, shut the laptop, walk away. When you come back, the answer's done.
 
-No timers to set. No "stay awake forever" pill to remember to swallow. Your laptop sleeps when *you* aren't working, and stays awake when your agent is.
+The moment the agent finishes, the assertion drops and your Mac is free to sleep again. No timers. No "stay awake until I remember to undo it." No `caffeinate` sitting there for three days.
 
 ---
 
-## Why
+## How it works
 
-Long-running AI agent tasks are exactly the workload macOS gets wrong:
+Both Claude Code and Codex already fire hooks at the lifecycle moments waik cares about — when a turn starts, when it ends, when it pauses for user input. waik installs into those hook configs and listens on a loopback socket. Activity becomes a direct signal instead of an inferred one.
 
-- `caffeinate` and similar tools are blunt — they keep the machine awake until you remember to kill them.
-- macOS's own power management has no concept of "this process is doing real work I'm waiting on" when the work happens in someone else's HTTPS stream.
-- Closing the lid or letting the display sleep can suspend the network stack mid-stream, killing a 20-minute task at minute 19.
+```
+┌────────────────────┐    hooks      ┌──────────────────┐
+│ Claude / Codex     │ ────────────▶ │ waik-hook (CLI)  │
+│ (lifecycle events) │               │ small, no-op if  │
+└────────────────────┘               │ waik not running │
+                                     └────────┬─────────┘
+                                              │ POST /event
+                                              ▼
+                                     ┌──────────────────┐
+                                     │ HookServer       │
+                                     │   sessions[tool/ │
+                                     │   session_id]    │
+                                     └────────┬─────────┘
+                                              │
+                                              ▼
+                                     ┌──────────────────┐
+                                     │ AppCoordinator   │
+                                     │   engaged ⇔      │
+                                     │   any session    │
+                                     │   open           │
+                                     └────────┬─────────┘
+                                              │
+                       ┌──────────────────────┼─────────────────────┐
+                       ▼                      ▼                     ▼
+              ┌──────────────┐      ┌──────────────────┐   ┌─────────────────┐
+              │ IOPMAssertion│      │ XPC helper       │   │ Menu bar UI     │
+              │ (idle sleep) │      │ SleepDisabled    │   │ live state      │
+              └──────────────┘      │ (system + lid)   │   └─────────────────┘
+                                    └──────────────────┘
+```
 
-`waik` solves this by treating *the streaming connection itself* as the signal.
-
-## Features
-
-- **Zero configuration.** Defaults cover the most common coding agents and AI providers.
-- **Smart detection.** Triggers only when a watched process **and** a known AI host are on the same connection — no false positives from Electron telemetry or Google Drive sharing Fastly IPs with `generativelanguage.googleapis.com`.
-- **Live, slick popover.** Translucent menu bar UI with a live countdown, animated receiving indicator, and one-click overrides.
-- **System-wide sleep control.** Optional helper daemon (registered via `SMAppService`) prevents *system* sleep too — not just display sleep — so lid-closed sessions on external power keep running.
-- **Cheap and quiet.** 1 Hz polling of socket tables plus per-process CPU deltas to detect streaming work. No packet inspection, no kernel extension, no admin password, no network proxy.
-- **Native SwiftUI.** Single binary, no Electron, no Python runtime.
+The keep-awake stays on as long as `sessions` is non-empty. Multiple windows of Claude and Codex running concurrently? Each is its own entry; only when the last one closes does the Mac get to sleep.
 
 ## Install
 
@@ -49,8 +67,6 @@ brew tap joshuajomiller/waik
 brew install --cask waik
 ```
 
-(Once the helper daemon is approved on first launch, in-app updates handle the rest.)
-
 ### From source
 
 ```bash
@@ -60,87 +76,67 @@ Scripts/build.sh
 open build/waik.app
 ```
 
-The first launch will ask you to approve a background item in **System Settings → Login Items**. That's the helper daemon that handles system-wide sleep control via the IOKit power assertion APIs. Click the icon in the menu bar, follow the "Open Login Items…" prompt if shown.
-
 ### Requirements
 
-- macOS 13 (Ventura) or later — uses `MenuBarExtra`, `SMAppService`, and modern `TimelineView` APIs.
+- macOS 13 (Ventura) or later.
 - Apple Silicon or Intel.
 - Swift 5.9+ toolchain (Xcode 15 or `xcode-select --install`).
 
+## First-time setup
+
+1. **Approve the helper daemon.** On first launch, macOS prompts you to enable a background item under **System Settings → Login Items**. The helper is what lets waik keep the Mac awake with the lid *closed*, not just the display. Without it, lid-closed sleep wins and your agent stops.
+2. **Install the hooks.** Click the menu bar icon → **Agent hooks** → **Install** for `claude` and `codex`. waik adds entries to:
+   - `~/.claude/settings.json` (Claude Code hooks)
+   - `~/.codex/config.toml` (Codex `notify`, chained so your existing notify program keeps working)
+   - `~/Library/Application Support/waik/waik-hook` (the launcher binary the hooks point at)
+
+   Uninstall from the same menu — waik tracks its own entries and removes only those.
+
+That's it. The first turn after install should show "Keep-awake engaged" in the menu the moment you submit a prompt.
+
 ## Usage
 
-Once running, the icon lives in your menu bar. Click it to see:
+The menu bar icon flips between two states:
 
-- **Status** — `Idle`, `Keep-awake engaged`, `Forced awake`, or `Monitoring paused`, with a colored dot.
-- **Live countdown** — when engaged, a ticking timer + progress bar showing how much of the grace window remains before release.
-- **Receiving indicator** — a pulsing green dot whenever real bytes are moving on a watched connection.
-- **Force keep awake** — override that pins the assertion on regardless of activity.
-- **Pause monitoring** — temporarily disable all detection.
-- **Watched processes** — current watchlist (collapsible).
+- **`bolt`** (outline) — Idle. Mac is allowed to sleep.
+- **`bolt.fill`** (filled) — Engaged. At least one agent session is mid-turn.
 
-That's it. Most users will install it and never open the menu again.
+Click for:
 
-## How it works
+- **Status** — `Idle`, `Keep-awake engaged · claude · 2 sessions`, `Forced awake`, `Monitoring paused`.
+- **Force keep awake** — pin the assertion on regardless of session state.
+- **Pause monitoring** — temporarily ignore hooks (useful while debugging).
+- **Sleep on low battery** — release the assertion below a chosen battery %, even mid-turn. Off by default.
+- **Agent hooks** — per-tool install/uninstall + status.
 
-```
-┌─────────────────┐    1 Hz    ┌──────────────────┐
-│ SocketScanner   │ ─────────▶ │ ActivityMonitor  │
-│ (proc_pidinfo)  │            │   - process×IP   │
-└─────────────────┘            │   - CPU delta    │
-        ▲                      └─────────┬────────┘
-        │                                │
-┌───────┴─────────┐                      ▼
-│ sysctl          │            ┌──────────────────┐
-│ KERN_PROC_ALL   │            │ AppCoordinator   │
-│ (full pid list) │            │   - state machine│
-└─────────────────┘            └─────────┬────────┘
-                                         │
-                       ┌─────────────────┼──────────────────┐
-                       ▼                 ▼                  ▼
-              ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
-              │ MenuBarView  │  │ IOKit power  │  │ XPC helper       │
-              │ (SwiftUI)    │  │ assertion    │  │ (system sleep)   │
-              └──────────────┘  └──────────────┘  └──────────────────┘
-```
+Set it and forget it. Most users open the menu twice: once to install hooks, once to enable launch-at-login.
 
-Every second, `waik`:
+## Architecture notes
 
-1. Enumerates every PID via `sysctl(KERN_PROC_ALL)` (the heavily-filtered `proc_listallpids` misses Electron apps on macOS 14+).
-2. For each PID, asks the kernel for its open TCP connections via `proc_pidinfo(PROC_PIDFDSOCKETINFO)`.
-3. Picks out every connection on port 443 owned by a watched process. A DNS cache of known AI hostnames is consulted for display purposes, not for the match itself — Cursor's AWS-ELB pool rotates faster than `getaddrinfo` can keep up.
-4. Samples cumulative CPU time for *every* matched PID via `proc_pidinfo(PROC_PIDTASKINFO)`. If any one of them crossed the activity threshold since the previous tick, the keep-awake window is refreshed.
-5. As long as the window is alive, an `IOPMAssertionCreateWithName(kIOPMAssertionTypeNoIdleSleep)` is held in-process *and* the helper daemon disables system sleep via `pmset`.
+For the curious or the contributors:
 
-### Why CPU delta, not socket bytes
+- **`HookServer`** binds `127.0.0.1` on a kernel-assigned ephemeral port, writes the port + a per-launch HMAC-style token to `~/Library/Application Support/waik/control.port`. The CLI reads the file, the server requires the token. No JSON-on-internet drama, no certificates, no kernel extension.
+- **`waik-hook`** is a ~80-line Swift CLI bundled in the .app. Hook entries point at a *stable* path under `~/Library/Application Support/waik/`, which waik refreshes from the bundle on every launch — moving the .app doesn't strand the hooks.
+- **`HookInstaller`** owns the JSON/TOML editing. Claude entries are tagged with `_waik: true` so uninstall is precise. Codex `notify` gets wrapped by a generated bash script that calls waik-hook *and* forwards to your previous notify program — your Codex desktop notifications keep firing.
+- **The helper daemon** is a privileged on-demand LaunchDaemon. Its entire XPC surface is two methods: `ping()` and `setSleepDisabled(Bool)`. It exists because lid-closed sleep requires a system power setting (`SleepDisabled`) the unprivileged app can't write.
 
-The obvious-looking signal — TCP send/receive buffer occupancy (`sbi_cc`) — does not work for streaming responses. Both the kernel and the userspace consume the buffer faster than any practical sampling rate; instrumented runs at 5 Hz observed `sbi_cc = 0` continuously on actively-streaming Anthropic connections. Cumulative process CPU time, by contrast, monotonically advances whenever the watched process decodes tokens, redraws its TUI, or dispatches tool calls. The default threshold is **0.5 % CPU per second** — well above the noise floor of an idle SSE keep-alive and reliably below the floor of a streaming response. The threshold also serves as the safety filter against name-only false positives (Electron telemetry sockets etc. don't burn enough CPU to trip it).
+Event mapping:
 
-The window decays naturally (default 45s) once activity stops. If the watched process drops below the CPU threshold for the full window, the assertion is released and the machine is free to sleep.
-
-## Configuration
-
-`waik` is intentionally minimal. The defaults are good. If you need to tune them, the watchlists live in `Sources/WaikApp/Preferences.swift` and `Sources/WaikApp/ResolverCache.swift`:
-
-| Default watched processes | Default AI hosts (for display) |
-|---|---|
-| `claude`, `codex` | `api.anthropic.com`, `api.openai.com` |
-| `Claude`, `Cursor` | `generativelanguage.googleapis.com` |
-| `Cursor Helper`, `zed` | `api2.cursor.sh`, `api3.cursor.sh`, `api.cursor.sh` |
-| `Code Helper` | `repo42.cursor.sh`, `cursor.sh` |
-
-> Process names are matched against the kernel-recorded `comm` name (truncated to 16 chars by Darwin — same as what `ps -o comm` shows). Keep custom entries ≤ 16 characters.
-
-The grace window is fixed at 45 seconds — long enough to bridge SSE keep-alive heartbeats from the Anthropic and OpenAI APIs without releasing prematurely.
+| Claude hook         | Codex notify type     | waik event           | Effect                      |
+|---------------------|-----------------------|----------------------|------------------------------|
+| `UserPromptSubmit`  | —                     | `turn_start`         | Add session, engage         |
+| `Stop`              | `agent-turn-complete` | `turn_end`           | Remove session              |
+| `Notification`      | `approval-requested`, `plan-mode-prompt` | `waiting_for_input` | Remove session (you're back) |
+| `SubagentStop`      | —                     | `subagent_end`       | Logged, ignored for state   |
 
 ## Privacy
 
-`waik` runs entirely on-device and never sees a single packet payload.
+Everything stays on-device.
 
-- It uses the same `proc_pidinfo` APIs that `lsof`, `nettop`, and `top` use to read connection 5-tuples and per-process CPU times — never packet bodies, never process memory.
-- It resolves a small fixed list of AI hostnames to IPs via the system resolver every 5 minutes. No other DNS activity.
-- No analytics, no telemetry, no auto-update phoning home. There is no network code in the app *at all* beyond the periodic `getaddrinfo` for the host cache.
-- The helper daemon's entire XPC surface is two methods: `ping()` and `setSleepDisabled(Bool)`.
+- No telemetry, no analytics.
+- No network code beyond the local loopback listener and Sparkle's update check.
+- Hook events that flow over loopback contain the agent's tool name, session ID, current working directory, and event kind. Nothing else.
+- waik reads and writes two files in your home directory (`~/.claude/settings.json`, `~/.codex/config.toml`), and only the entries it owns. Uninstall is reversible: backups of the prior Codex `notify` live at `~/Library/Application Support/waik/codex-notify-original.json`.
 
 ## Building
 
@@ -151,53 +147,68 @@ Scripts/build.sh
 # Release build
 CONFIG=release Scripts/build.sh
 
-# Signed build for distribution (requires a Developer ID Application cert)
-SIGN_ID="Developer ID Application: Your Name (TEAMID)" \
-  Scripts/build.sh
+# Signed for distribution
+SIGN_ID="Developer ID Application: Your Name (TEAMID)" Scripts/build.sh
 ```
 
-The output is a self-contained `build/waik.app` bundle with the helper daemon inside `Contents/Library/LaunchDaemons`. SMAppService handles registration at first launch.
+Output is a self-contained `build/waik.app` with the helper daemon under `Contents/Library/LaunchDaemons` and `waik-hook` under `Contents/MacOS`. SMAppService handles helper registration at first launch.
 
-For cutting tagged releases, Developer ID signing + notarization, Sparkle auto-updates, and the Homebrew cask pipeline, see [docs/RELEASING.md](docs/RELEASING.md).
+For tagged releases, Developer ID signing, notarization, Sparkle auto-updates, and the Homebrew cask pipeline: see [docs/RELEASING.md](docs/RELEASING.md).
 
 ### Project layout
 
 | Path | What's in it |
 |---|---|
-| `Sources/WaikApp` | The menu bar app — SwiftUI, coordinator, activity monitor, helper client. |
-| `Sources/WaikHelper` | Privileged helper daemon — XPC-served wrapper around `pmset`. |
-| `Sources/WaikShared` | XPC protocol + constants shared between the two. |
-| `Sources/CProcInfo` | C shim for `sysctl(KERN_PROC_ALL)` + `proc_pidinfo` enumeration. |
+| `Sources/WaikApp` | Menu bar app — coordinator, `HookServer`, `HookInstaller`, SwiftUI. |
+| `Sources/waik-hook` | Tiny CLI invoked from external hooks. |
+| `Sources/WaikHelper` | Privileged helper daemon — XPC wrapper around the unpublished `IOPMSetSystemPowerSetting`. |
+| `Sources/WaikShared` | XPC protocol + constants shared between app and helper. |
 | `Resources` | Info.plist, daemon plist, entitlements. |
-| `Scripts/build.sh` | Assembles the .app bundle and signs it. |
+| `Scripts/build.sh` | Assembles + signs the .app bundle. |
 
 ## Troubleshooting
 
 <details>
-<summary><strong>The menu bar icon doesn't appear on my notched MacBook</strong></summary>
+<summary><strong>Menu shows "Idle" while Claude is clearly running</strong></summary>
 
-macOS adds third-party menu bar items leftward, so newly-launched apps land closest to the notch — and can fall behind it. ⌘-drag the icon to the right past your other status items, or install [Ice](https://github.com/jordanbaird/Ice) to pin it where you want it.
+Hooks aren't installed (or were installed pointing at a stale bundle path). Open the menu → **Agent hooks** → check the status badge. If it says `not installed` or `partial`, click **Install**. If you moved or rebuilt waik.app since the last install, the hooks may still point at the old path — `Uninstall` then `Install` to repoint them at the stable launcher.
 </details>
 
 <details>
-<summary><strong>"Daemon awaiting approval" warning in the menu</strong></summary>
+<summary><strong>"Daemon awaiting approval" warning</strong></summary>
 
-macOS requires you to opt-in to background items. Click **Open Login Items…** in the popover, find `waik`, and toggle it on. The warning will clear within a few seconds.
+macOS requires you to opt in to background items. Click **Open Login Items…** in the popover, find `waik`, toggle it on. The warning clears within a few seconds. Until then, lid-closed sleep wins and waik can only delay *idle* sleep — display sleep with the lid open is still suppressed.
 </details>
 
 <details>
-<summary><strong>It never engages even though Claude is clearly working</strong></summary>
+<summary><strong>Lid-closed sleep happens anyway</strong></summary>
 
-Check the watched-process list under the menu — the `comm` name may differ from the app's display name. For Electron apps especially, the actual networking process is often a helper (`Code Helper`, `Cursor Helper`). Add the correct `comm` name to `defaultWatchedProcesses` in `Preferences.swift` and rebuild.
+Two things to check, in order. First, the helper daemon must be approved (see above) — without it, the `SleepDisabled` system flag never gets written. Second, the build must be Developer ID signed; ad-hoc signed dev builds can't register the daemon at all. `Scripts/build.sh` without `SIGN_ID` is ad-hoc.
+
+If you're stuck in a state where the lid won't sleep even after quitting waik: `sudo pmset -a disablesleep 0` clears the system flag. A reboot does too.
+</details>
+
+<details>
+<summary><strong>I use a custom Codex <code>notify</code> program</strong></summary>
+
+waik wraps it, not replaces it. The installer writes a small bash chain script that calls waik-hook *then* `exec`s your original notify program with the original args. Codex desktop notifications, Slack pings, whatever you had — still works. The original command is saved at `~/Library/Application Support/waik/codex-notify-original.json` and restored on uninstall.
+</details>
+
+<details>
+<summary><strong>Cursor / Zed / VS Code support</strong></summary>
+
+Not in this release. The first version of waik scraped network connections, which let it cover any process that talked to api.anthropic.com — but at the cost of false positives, polling overhead, and DNS guesswork. The hook-based approach is precise and instant, but limited to tools that fire lifecycle hooks. Cursor and Zed land here when they grow comparable mechanisms.
+
+If you need network-scraping coverage today, the `pre-hooks-backup` branch on this repo has the last commit before the rewrite.
 </details>
 
 ## Contributing
 
-PRs welcome — especially additions to the default watchlist and AI host list. Please:
+PRs welcome. The most useful additions are around the hook installer — particularly support for new agents as they ship hook APIs. Please:
 
-1. Verify the new process name with `ps -axo comm | sort -u | grep -i <name>`.
-2. Verify the host actually shows up via `nslookup <hostname>` and check it's a stable A record (not a CDN shared with unrelated services).
-3. Open a PR with a short note on which agent / provider the addition covers.
+1. Confirm the agent's hook payload shape with a manual test (echo the JSON into `waik-hook <tool> <event>`).
+2. Add the agent to `Preferences.supportedTools` and extend `HookInstaller` with the install/uninstall path for its config file.
+3. Note in the PR description which hook events you mapped to which waik event and why.
 
 ## License
 
