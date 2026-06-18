@@ -52,7 +52,16 @@ jobs:
         run: echo "BUILD_NUMBER=$(date -u +%s)" >> "$GITHUB_ENV"
 
       - name: Test
-        run: swift test
+        # `swift test` exits non-zero when no test targets exist. We removed
+        # the legacy WaikCoreTests with the network-scanner; the new hook
+        # path doesn't have unit coverage yet. Skip when there's nothing to
+        # run; still surface real failures when tests come back.
+        run: |
+          if [ -d Tests ] && find Tests -name '*.swift' -type f | grep -q .; then
+            swift test
+          else
+            echo "No test targets declared — skipping."
+          fi
 
       - name: Determine signing mode
         id: signing
