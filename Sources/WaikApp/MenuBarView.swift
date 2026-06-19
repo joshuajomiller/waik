@@ -5,8 +5,6 @@ struct MenuBarView: View {
     @EnvironmentObject var coordinator: AppCoordinator
     let updater: SPUUpdater
 
-    @State private var toolsExpanded = false
-
     var body: some View {
         VStack(spacing: 8) {
             statusCard
@@ -21,18 +19,13 @@ struct MenuBarView: View {
 
             footerCard
         }
-        // Horizontal padding only — on macOS 26 (Tahoe) MenuBarExtra's
-        // `.window` style adds its own generous vertical breathing room
-        // around the content, which combined with explicit vertical padding
-        // produced large empty bands above the status card and below the
-        // footer.
         .padding(.horizontal, 10)
+        .padding(.vertical, 10)
         .frame(width: 320)
         // Force the popover to size to the content's intrinsic height
         // instead of expanding to whatever default min-height the system
         // popover wants to apply.
         .fixedSize(horizontal: false, vertical: true)
-        .animation(.easeInOut(duration: 0.18), value: toolsExpanded)
     }
 
     // MARK: - Status
@@ -199,54 +192,37 @@ struct MenuBarView: View {
     private var toolsCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 0) {
-                HoverButton {
-                    toolsExpanded.toggle()
-                } content: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 16)
-                        Text("Agent hooks")
-                        Spacer()
-                        Text("\(installedCount)/\(coordinator.availableTools.count)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-                            )
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(toolsExpanded ? 90 : 0))
-                    }
+                HStack(spacing: 10) {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                    Text("Agent hooks")
+                    Spacer()
+                    Text("\(installedCount)/\(coordinator.availableTools.count)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                        )
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
 
-                if toolsExpanded {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(coordinator.availableTools, id: \.self) { tool in
-                            toolRow(tool)
-                        }
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(coordinator.availableTools, id: \.self) { tool in
+                        toolRow(tool)
                     }
-                    .padding(.leading, 30)
-                    .padding(.trailing, 14)
-                    .padding(.top, 4)
-                    .padding(.bottom, 6)
-                    // Plain fade — `.move(edge: .top)` slid the expanded
-                    // section in from above its final position, briefly
-                    // overlapping the "Agent hooks" header row before the
-                    // parent card grew to fit. Letting the implicit height
-                    // animation drive the reveal avoids the overlap.
-                    .transition(.opacity)
                 }
+                .padding(.leading, 30)
+                .padding(.trailing, 14)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
             }
             .padding(6)
-            // Keep the expanding content inside the card's rounded shape so
-            // any partial-height transient is clipped instead of bleeding.
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
