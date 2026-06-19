@@ -87,9 +87,21 @@ The helper must be approved (see above) — without it, lid-closed sleep wins. I
 </details>
 
 <details>
-<summary><strong>Zed / VS Code support</strong></summary>
+<summary><strong>Menu stuck on "Keep-awake engaged" after the agent finished</strong></summary>
 
-Not yet. Neither currently exposes a per-turn lifecycle hook waik can install into. They'll land here when those mechanisms ship.
+Usually means a `Stop` hook never fired — terminal closed mid-turn, process force-quit, or a network agent that doesn't emit a finish event. waik garbage-collects sessions older than an hour, but you don't have to wait: toggle **Pause monitoring** on then off, or quit and relaunch waik to reset.
+</details>
+
+<details>
+<summary><strong>"waik can't be opened" / "Apple cannot check it for malicious software"</strong></summary>
+
+Gatekeeper warning on a release that isn't notarized. Right-click the app in Finder → **Open** → **Open** in the confirmation dialog. macOS remembers the choice after the first time. (Installing via Homebrew avoids this.)
+</details>
+
+<details>
+<summary><strong>My Codex desktop notifications stopped working</strong></summary>
+
+waik wraps your existing Codex `notify` program rather than replacing it, but if the wrapper got into a bad state, **Agent hooks → Uninstall → Install** for `codex` rewrites it cleanly. Your original `notify` config is preserved across install/uninstall.
 </details>
 
 ## License
