@@ -14,7 +14,7 @@ cask "waik" do
 
   # Sparkle handles in-app updates once installed.
   auto_updates true
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "waik.app"
 
